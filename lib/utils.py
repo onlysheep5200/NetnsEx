@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 import netifaces
+from uuid import uuid4
 class Host(object):
     '''
     描述物理宿主机的数据结构
     '''
     mac = None
     transportIP = None
-    containers = []
-    proxys = []
-    existNetworkNamespaces = []
     uuid = None
+    switchInterface = None
+
 
     def getConcreteProxy(self,ProxyClass):
         for item in self.proxys :
@@ -18,13 +18,16 @@ class Host(object):
         return None
 
     @classmethod
-    def currentHost(cls,switchInterface = None,transportInterface=None):
+    def currentHost(cls,uuid,switchInterface = None,transportInterface=None):
         if not getattr(cls,'currentHost') :
             switchInterface = Host._getInterfaceInfo(switchInterface)
             transportInterface = Host._getInterfaceInfo(transportInterface)
             cls.host = Host()
             cls.host.mac = switchInterface[netifaces.AF_LINK][0]['address']
             cls.host.transportIP = transportInterface[netifaces.AF_INET][0]['address']
+            cls.host.uuid = uuid
+            cls.host.switchInterface = switchInterface
+
         return cls.host
 
 

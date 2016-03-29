@@ -21,8 +21,8 @@ class NetworkNamespace(object) :
     createTime = None
     creatorId = None
 
-    def __init__(self,host,address,belongsTo = None):
-        self.initHost = host
+    def __init__(self,hostId,address,belongsTo = None):
+        self.initHostId = hostId
         self.addrs.append(address)
         self.belongsTo = belongsTo
         self.createTime = now()
