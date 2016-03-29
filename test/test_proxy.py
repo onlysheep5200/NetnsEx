@@ -1,3 +1,5 @@
+import sys
+sys.path.append('..')
 from hostend.proxy import *
 from lib.utils import Host
 if __name__ == '__main__' :
