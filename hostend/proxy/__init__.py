@@ -49,9 +49,9 @@ class DockerProxy(Proxy) :
         try :
             hostConfig = kwargs.get('host_config') if isinstance(kwargs.get('host_config'),dict) else self.client.create_host_config()
             if bindNetns and isinstance(bindNetns,NetworkNamespace) and bindNetns.initHostId == self.host.uuid:
-                hostConfig['network_mode'] = 'container:%s'%bindNetns.creatorId
+                hostConfig['NetworkMode'] = 'container:%s'%bindNetns.creatorId
             else :
-                hostConfig['network_mode'] = None
+                hostConfig['NetworkMode'] = None
             kwargs['host_config'] = hostConfig
 
             container = self.client.create_container(*args,**kwargs)
