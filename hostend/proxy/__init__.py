@@ -99,10 +99,13 @@ class DockerProxy(Proxy) :
         veth = 'veth_%d'%pid
         peer = 'veth_%dc'%pid
         commonds = [ 'ip link add %s type veth peer name %s'%(veth,peer),
-                     'ovs-vsctl add-port %s %s'%(bridge,veth),
+                    'ovs-vsctl add-port %s %s'%(bridge,veth),
                     'ip link set %s netns %d'%(peer,pid),
-                    'ip netns exec %d ip link set dev %s name eth0 && ip netns exec %d ip addr add %s dev eth0 && ip netns exec %d ip link set eth0 up'%(pid,peer,pid,ip,pid),
-                    'ip netns exec %d ip addr del 127.0.0.1/8 dev lo && ip netns exec %d ip route add 127.0.0.1/8 dev eth0'%(pid,pid),
+                    'ip netns exec %d ip link set dev %s name eth0'%(pid,peer),
+                    'ip netns exec %d ip addr add %s dev eth0'%(pid,ip),
+                    'ip netns exec %d ip link set eth0 up'%(pid),
+                    'ip netns exec %d ip addr del 127.0.0.1/8 dev lo'%(pid),
+                    'ip netns exec %d ip route add 127.0.0.1/8 dev eth0'%(pid),
                     'ip link set %s up'%veth]
         for cmd in commonds :
             command_exec(cmd)
