@@ -17,6 +17,10 @@ class Host(object):
                 return item
         return None
 
+    def getSwitchName(self):
+        if self.switchInterface :
+            return self.switchInterface.get('name')
+
     @classmethod
     def currentHost(cls,uuid,switchInterface = None,transportInterface=None):
         if not hasattr(cls,'host') :

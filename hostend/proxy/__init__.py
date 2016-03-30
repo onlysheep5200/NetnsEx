@@ -61,7 +61,7 @@ class DockerProxy(Proxy) :
             self._link_netns_to_directory(pid)
             bridge = 'docker0'
             if self.host.switchInterface :
-                bridge = self.host.switchInterface
+                bridge = self.host.getSwitchName()
 
             self._add_veth_to_netns(pid,bridge)
             if not bindNetns :
@@ -101,7 +101,7 @@ class DockerProxy(Proxy) :
         commonds = [ 'ip link add %s type veth peer name %s'%(veth,peer),
                      'ovs-vsctl add-port %s %s'%(bridge,veth),
                     'ip link set %s netns %d'%(peer,pid),
-                    'ip netns exec %d ip link set dev %s name veth0 && ip netns exec %d addr add %s dev eth0 && ip link set eth0 up'%(pid,peer,pid,ip),
+                    'ip netns exec %d ip link set dev %s name veth0 && ip netns exec %d addr add %s dev eth0 && ip netns exec %d ip link set eth0 up'%(pid,peer,pid,ip,pid),
                     'ip netns exec %d ip addr del 127.0.0.1/8 dev lo && ip netns exec %d ip route add 127.0.0.1/8 dev eth0'%(pid,pid),
                     'ip link set %s up'%veth]
         for cmd in commonds :
