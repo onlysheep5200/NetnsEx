@@ -52,6 +52,7 @@ class DockerProxy(Proxy) :
                 hostConfig['network_mode'] = 'container:%s'%bindNetns.creatorId
             else :
                 hostConfig['network_mode'] = None
+            kwargs['host_config'] = hostConfig
 
             container = self.client.create_container(*args,**kwargs)
             self.client.start(container=container.get('Id'))
@@ -73,7 +74,7 @@ class DockerProxy(Proxy) :
             return container
 
         except Exception,e :
-            if container and 'Id' in container :
+            if container and isinstance(container,dict) and 'Id' in container :
                 self.client.stop(container['Id'])
                 self.client.remove_container(container['Id'])
             raise e
