@@ -19,12 +19,12 @@ class Host(object):
 
     @classmethod
     def currentHost(cls,uuid,switchInterface = None,transportInterface=None):
-        if not getattr(cls,'currentHost') :
+        if not hasattr(cls,'host') :
             switchInterface = Host._getInterfaceInfo(switchInterface)
             transportInterface = Host._getInterfaceInfo(transportInterface)
             cls.host = Host()
-            cls.host.mac = switchInterface[netifaces.AF_LINK][0]['address']
-            cls.host.transportIP = transportInterface[netifaces.AF_INET][0]['address']
+            cls.host.mac = switchInterface[netifaces.AF_LINK][0]['addr']
+            cls.host.transportIP = transportInterface[netifaces.AF_INET][0]['addr']
             cls.host.uuid = uuid
             cls.host.switchInterface = switchInterface
 
@@ -41,7 +41,7 @@ class Host(object):
         '''
         for interface in interfaces :
             if_info = netifaces.ifaddresses(interface)
-            if netifaces.AF_INET in if_info and  if_info[netifaces.AF_INET][0]['address'] != '127.0.0.1' :
+            if netifaces.AF_INET in if_info and  if_info[netifaces.AF_INET][0]['addr'] != '127.0.0.1' :
                 return if_info
         return None
 

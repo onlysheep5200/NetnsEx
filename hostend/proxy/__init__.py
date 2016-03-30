@@ -16,7 +16,7 @@ class Proxy(object):
     __metaclass__ = ABCMeta
 
     @abstractmethod
-    def create(self,bindingSwitch,bindNetns) :
+    def create_container(self,bindingSwitch,bindNetns) :
         pass
 
     @abstractmethod
@@ -47,7 +47,7 @@ class DockerProxy(Proxy) :
         '''
         container = {}
         try :
-            hostConfig = kwargs.get('host_config') if isinstance(kwargs.get('host_config')) else self.client.create_host_config()
+            hostConfig = kwargs.get('host_config') if isinstance(kwargs.get('host_config'),dict) else self.client.create_host_config()
             if bindNetns and isinstance(bindNetns,NetworkNamespace) and bindNetns.initHostId == self.host.uuid:
                 hostConfig['network_mode'] = 'container:%s'%bindNetns.creatorId
             else :
