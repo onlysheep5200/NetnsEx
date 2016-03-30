@@ -20,13 +20,16 @@ class Host(object):
     @classmethod
     def currentHost(cls,uuid,switchInterface = None,transportInterface=None):
         if not hasattr(cls,'host') :
-            switchInterface = Host._getInterfaceInfo(switchInterface)
-            transportInterface = Host._getInterfaceInfo(transportInterface)
+            switchInterfaceInfo = Host._getInterfaceInfo(switchInterface)
+            transportInterfaceInfo = Host._getInterfaceInfo(transportInterface)
             cls.host = Host()
-            cls.host.mac = switchInterface[netifaces.AF_LINK][0]['addr']
-            cls.host.transportIP = transportInterface[netifaces.AF_INET][0]['addr']
+            cls.host.mac = switchInterfaceInfo[netifaces.AF_LINK][0]['addr']
+            cls.host.transportIP = transportInterfaceInfo[netifaces.AF_INET][0]['addr']
             cls.host.uuid = uuid
-            cls.host.switchInterface = switchInterface
+            cls.host.switchInterface = {
+                'name' : switchInterface,
+                'info' : switchInterfaceInfo
+            }
 
         return cls.host
 

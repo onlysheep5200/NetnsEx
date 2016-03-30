@@ -2,6 +2,7 @@
 from utils import Host
 from datetime import datetime
 from tools import *
+from uuid import uuid4
 class NetworkNamespace(object) :
     '''
     NetworkNamespace : 描述网络命名空间的数据结构
@@ -26,6 +27,7 @@ class NetworkNamespace(object) :
         self.addrs.append(address)
         self.belongsTo = belongsTo
         self.createTime = now()
+        self.uuid = str(uuid4())
 
 
 

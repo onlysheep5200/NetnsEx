@@ -74,9 +74,16 @@ class DockerProxy(Proxy) :
             return container
 
         except Exception,e :
+            containerId = None
             if container and isinstance(container,dict) and 'Id' in container :
+                containerId = container['Id']
+            elif container and isinstance(container,Container) :
+                containerId = container.id
+
+            if containerId :
                 self.client.stop(container['Id'])
                 self.client.remove_container(container['Id'])
+
             raise e
 
     def _link_netns_to_directory(self,pid):
@@ -116,7 +123,7 @@ class DockerProxy(Proxy) :
         container.createTime = now()
         container.hostId = str(self.host.uuid)
         container.id = containerInfo['Id']
-        container.netnsId = netns
+        container.netnsId = netns.uuid
         container.pid = containerInfo['State']['Pid']
         container.state = CONTAINER_STATE_ACTIVE
         container.switch = switch
