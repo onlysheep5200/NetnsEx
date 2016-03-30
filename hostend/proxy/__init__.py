@@ -10,7 +10,7 @@ from lib.tools import *
 import os.path
 from lib.container import *
 import re
-from controller import *
+from hostend.controller import *
 class Proxy(object):
     """容器创建代理"""
     __metaclass__ = ABCMeta
@@ -51,7 +51,7 @@ class DockerProxy(Proxy) :
             if bindNetns and isinstance(bindNetns,NetworkNamespace) and bindNetns.initHostId == self.host.uuid:
                 hostConfig['NetworkMode'] = 'container:%s'%bindNetns.creatorId
             else :
-                hostConfig['NetworkMode'] = None
+                hostConfig['NetworkMode'] = 'none'
             kwargs['host_config'] = hostConfig
 
             container = self.client.create_container(*args,**kwargs)
@@ -128,7 +128,11 @@ class DockerProxy(Proxy) :
 
 
     def _after_create_container(self,container,bindNs = None):
-        self.controller.report(Events.container_created_event(container.__dict__,bindNs.__dict__ if bindNs else None))
+        if bindNs : 
+            bindNs = bindNs.__dict__
+        else : 
+            bindNs = {}
+        self.controller.report(Events.container_created_event(container.__dict__,bindNs))
 
 
 
@@ -139,7 +143,8 @@ class DockerProxy(Proxy) :
 
 if __name__ == '__main__' :
     proxy = DockerProxy(Client('unix://var/run/docker.sock'),Host.currentHost('1212',switchInterface='ovsbr1'))
-    proxy.create_container('10.232.0.3',None,image='ubuntu',command='/bin/sh',stdin_open=True,tty=True,detach=True)
+    container = proxy.create_container('10.232.0.3',None,image='ubuntu',command='/bin/sh',stdin_open=True,tty=True,detach=True)
+    print container.__dict__
 
 
 	

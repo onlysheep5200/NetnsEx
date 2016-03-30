@@ -19,12 +19,13 @@ class Events(object):
 
     @classmethod
     def container_created_event(cls,container,netns=None):
-        return {
-            'type' : 'container_created',
-            'container' : json.dumps(container),
-            'is_netns_created' : netns == None,
-            'netns' : json.dumps(netns)
-        }
+        pass
+       # return {
+       #     'type' : 'container_created',
+       #     'container' : json.dumps(container),
+       #     'is_netns_created' : netns == None,
+       #     'netns' : json.dumps(netns)
+       # }
 
 
 
