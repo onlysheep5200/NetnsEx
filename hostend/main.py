@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals
+import sys
+sys.path.append('..')
+
 from tornado.web import Application
 import tornado.ioloop
 import tornado.options
@@ -19,7 +22,7 @@ controller = Controller()
 controller.reportUrl = config.get('reportUrl')
 controller.requestUrl = config.get('requestUrl')
 
-host = Host.currentHost('',switchInterface=config['switchName'])
+host = Host.currentHost('',switchInterface=config['switchName'],transportInterface=config['transportInterface'])
 data = controller.request('getHostId',[host.mac,host.transportIP])
 if 'uuid' in data :
     host.uuid = data['uuid']

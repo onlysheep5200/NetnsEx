@@ -7,7 +7,7 @@ import tornado.escape
 import copy
 
 class CreateContainerHandler(RequestHandler):
-    @gen
+    @gen.coroutine
     def get(self):
         ip = self.get_argument('ip')
         netns = self.get_argument('netns',default=None)

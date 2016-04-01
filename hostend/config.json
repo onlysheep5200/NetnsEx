@@ -1,6 +1,6 @@
 {
-    "reportUrl" : "",
-    "requestUrl" : "",
+    "reportUrl" : "http://10.109.242.219:8080/netnsex",
+    "requestUrl" : "http://10.109.242.219:8080/netnsex",
     "switchName" : "ovsbr1",
     "transportInterface" : "eth1"
 }
