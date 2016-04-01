@@ -1,18 +1,33 @@
 # -*- coding: utf-8 -*-
 import requests
 import json
+from lib.tools import *
+
+
 class Controller(object):
 
     reportUrl = None
     requestUrl = None
 
+
     def report(self,event):
         #requests.post(self.reportUrl,event)
         pass
 
-    def request(self,resources):
+    def request(self,resources,data):
         #requests.get(requests,data=dict(resources=resources))
-        pass
+        url = combine_url(self.requestUrl,resources)
+        if isinstance(data,dict) :
+            r = requests.get(url,params=data)
+        elif isinstance(data,list) :
+            for x in data :
+                url+= '/'+str(x)
+            r = requests.get(url)
+        else :
+            r = None
+        return r.json() if r else None
+
+
 
 
 class Events(object):
@@ -26,6 +41,7 @@ class Events(object):
        #     'is_netns_created' : netns == None,
        #     'netns' : json.dumps(netns)
        # }
+
 
 
 

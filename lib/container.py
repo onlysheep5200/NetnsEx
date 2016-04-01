@@ -17,6 +17,7 @@ class Container(object):
     switch = None
     state = CONTAINER_STATE_PREPARE
     belongsTo = None
+    servicePort = -1
 
     def toJson(self):
         pass

@@ -28,4 +28,10 @@ def command_exec(command):
     process.wait()
     return process.returncode
 
+def combine_url(url1,url2):
+    if url1[len(url1)-1] == '/' :
+        return url1+url2
+    else :
+        return url1+'/'+url2
+
 

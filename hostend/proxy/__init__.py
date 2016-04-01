@@ -71,7 +71,7 @@ class DockerProxy(Proxy) :
 
             container = self._create_container_instance(containerInfo,self.host.switchInterface,bindNetns)
             self._after_create_container(container,bindNs=bindNetns)
-            return container
+            return container,bindNetns
 
         except Exception,e :
             containerId = None
@@ -138,11 +138,12 @@ class DockerProxy(Proxy) :
 
 
     def _after_create_container(self,container,bindNs = None):
-        if bindNs : 
-            bindNs = bindNs.__dict__
-        else : 
-            bindNs = {}
-        self.controller.report(Events.container_created_event(container.__dict__,bindNs))
+        # if bindNs :
+        #     bindNs = bindNs.__dict__
+        # else :
+        #     bindNs = {}
+        # self.controller.report(Events.container_created_event(container.__dict__,bindNs))
+        pass
 
 
 

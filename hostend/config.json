@@ -1,0 +1,6 @@
+{
+    "reportUrl" : "",
+    "requestUrl" : "",
+    "switchName" : "ovsbr1",
+    "transportInterface" : "eth1"
+}

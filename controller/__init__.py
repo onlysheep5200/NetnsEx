@@ -5,4 +5,29 @@
 			数据流量的规划（通过数据包的目的地址与目的端口进行，如果是ARP协议，则直接将arp包随机传向同一命名空间的任一可用容器）
 			容器的迁移（流程见例图）
 			访问控制（可由用户配置）
+
+    部分数据结构 ：
+        container :
+            id
+            dpid
+            portId
+            mac
+            hostid
+            netnsId
+
+
+        netns:
+            id
+            ip
+            containerPortMapping {container_id : port}
+            flag
+            hostId
+            containers
+
+        host :
+            id
+            containers
+            transIp
+
+
 '''
