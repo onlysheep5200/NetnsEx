@@ -224,7 +224,7 @@ class NetnsExController(ControllerBase):
         self.persistent = data['persistent']
 
 
-    @route('get_host_id', url+'/getHostName/{hostMac}/{transIp}', methods=['GET'],requirements={'hostMac':r'[a-z0-9:]+','transIp':r'[1-9\\.]+'})
+    @route('get_host_id', url+'/getHostId/{hostMac}/{transIp}', methods=['GET'],requirements={'hostMac':r'[a-z0-9:]+','transIp':r'[1-9\\.]+'})
     def list_mac_table(self, req, **kwargs):
         reply = {}
         hostMac = kwargs['hostMac']

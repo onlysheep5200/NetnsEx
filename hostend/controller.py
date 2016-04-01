@@ -25,6 +25,7 @@ class Controller(object):
             r = requests.get(url)
         else :
             r = None
+        print 'the response for %s is %s'%(url,r.text if r else None)
         return r.json() if r else None
 
 
