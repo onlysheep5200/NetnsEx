@@ -106,6 +106,7 @@ class DockerProxy(Proxy) :
                     'ip netns exec %d ip link set eth0 up'%(pid),
                     'ip netns exec %d ip addr del 127.0.0.1/8 dev lo'%(pid),
                     'ip netns exec %d ip route add default dev eth0'%(pid),
+                    'ip netns exec %d ping -I eth0 -c 1 localhost'%(pid),
                     'ip link set %s up'%veth]
         for cmd in commonds :
             command_exec(cmd)
