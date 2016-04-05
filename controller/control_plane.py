@@ -84,6 +84,7 @@ class NetnsExtension(app_manager.RyuApp):
         in_port = msg.match['in_port']
 
 
+
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
         icmp_pkt = pkt.get_protocols(icmp.icmp) if icmp in pkt.protocols else None
@@ -202,8 +203,11 @@ class NetnsExtension(app_manager.RyuApp):
     def _update_container_info(self,datapath,in_port,mac):
         container = self.persistent.findOne('container',{'mac':mac})
         if container :
+            print 'container with mac %s connect to port %s'%(container['mac'],in_port)
             container['portId'] = in_port
             container['dpId'] = datapath.id
+            #保存最新的容器信息
+            self.persistent.save('container',{'_id':container['_id']},container)
 
         return container
 
