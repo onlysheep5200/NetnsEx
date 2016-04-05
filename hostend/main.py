@@ -26,7 +26,7 @@ host = Host.currentHost('',switchInterface=config['switchName'],transportInterfa
 data = controller.request('getHostId',[host.mac,host.transportIP])
 if data['state'] == 'success':
     host.uuid = data['data']['id']
-
+print host
 print 'my host id is : %s'%host.uuid
 
 

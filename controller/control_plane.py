@@ -16,6 +16,7 @@ import json
 from persistent import TestPersistent
 import requests
 import uuid
+import cgi
 
 instance_name = 'netns_api_app'
 url = '/netnsex'
@@ -243,10 +244,12 @@ class NetnsExController(ControllerBase):
 
     @route('create_container', url+'/createContainer', methods=['POST'])
     def create_container(self, req, **kwargs):
-        data = json.loads(req.body)
-        ip = data.get('ip')
-        host = self.persistent.findOne('host',{'id':data.get('host')})
-        image = data.get('image')
+        print req.body
+        print req.environ
+        data = cgi.parse_multipart(req.body_file,{'boundary':self._getBoundary(req)})
+        ip = data.get('ip')[0]
+        host = self.persistent.findOne('host',{'id':data.get('host')[0]})
+        image = data.get('image')[0] if 'image' in data else None
         if ip and host :
             result = self.request_host_to_create_container(host,ip,image)
             print result
@@ -330,4 +333,11 @@ class NetnsExController(ControllerBase):
             'hosts' : [],
             'containers' : [],
         }
+
+    def _getBoundary(self,req):
+        contentType = req.environ['CONTENT_TYPE']
+        for item in contentType.split(';') :
+            if 'boundary' in item  :
+                return item.split('=')[1]
+        return None
 
