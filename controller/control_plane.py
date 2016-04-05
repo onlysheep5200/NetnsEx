@@ -305,11 +305,11 @@ class NetnsExController(ControllerBase):
             data = {
                 'ip' : ip,
                 'serialId' : str(uuid.uuid4()),
-                'image' : 'image',
+                'image' : image,
                 'servicePort' : servicePort,
                 'netns' : netns
             }
-            r = requests.post(url,json=data)
+            r = requests.post(url,data=data)
             return r.json()
         else :
             return {}
