@@ -130,10 +130,15 @@ class DockerProxy(Proxy) :
         container.pid = containerInfo['State']['Pid']
         container.state = CONTAINER_STATE_ACTIVE
         container.switch = switch
-        p = subprocess.Popen(shlex.split('ip netns exec %d ifconfig eth0'),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        p = subprocess.Popen(shlex.split('ip netns exec %d ifconfig eth0'%containerInfo['State']['Pid']),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         if p.wait() == 0 :
-            m = re.match('.* HWaddr (?P<mac>\S*).*',p.stdout.read())
+            s = p.stdout.read()
+            print s
+            m = re.match(r'.* HWaddr (?P<mac>\S*).*',s)
             container.mac = m.groupdict().get('mac') if m else None
+        else : 
+            print p.stdout.read()
+            print p.stderr.read()
         return container
 
 
