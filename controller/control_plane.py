@@ -87,6 +87,7 @@ class NetnsExtension(app_manager.RyuApp):
         eth = pkt.get_protocols(ethernet.ethernet)[0]
         icmp_pkt = pkt.get_protocols(icmp.icmp) if icmp in pkt.protocols else None
         ip = pkt.get_protocols(ipv4.ipv4) if ipv4.ipv4 in pkt.protocols else None
+        arp_pkt = pkt.get_protocols(arp.arp) if arp.arp in pkt.protocols else None
 
 
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
@@ -108,6 +109,9 @@ class NetnsExtension(app_manager.RyuApp):
 
         if ip :
             self._operate_with_ip(in_port,datapath,ip,sendContainer,netns,eth)
+
+        if arp :
+            self._operate_with_arp(msg,datapath,arp_pkt,sendContainer,netns,eth)
 
         # dpid = datapath.id
         # self.mac_to_port.setdefault(dpid, {})
@@ -224,7 +228,7 @@ class NetnsExController(ControllerBase):
         self.persistent = data['persistent']
 
 
-    @route('get_host_id', url+'/getHostId/{hostMac}/{transIp}', methods=['GET'],requirements={'hostMac':r'[a-z0-9:]+','transIp':r'[1-9\\.]+'})
+    @route('get_host_id', url+'/getHostId/{hostMac}/{transIp}', methods=['GET'],requirements={'hostMac':r'[a-z0-9:]+','transIp':r'[0-9\\.]+'})
     def list_mac_table(self, req, **kwargs):
         reply = {}
         hostMac = kwargs['hostMac']
@@ -245,6 +249,7 @@ class NetnsExController(ControllerBase):
         image = data.get('image')
         if ip and host :
             result = self.request_host_to_create_container(host,ip,image)
+            print result
             if 'container' in result :
                 newContainer = self.persistent.save(self.parse_container(result['container']))
             else :

@@ -11,7 +11,7 @@ class Controller(object):
 
 
     def report(self,event):
-        #requests.post(self.reportUrl,event)
+        #requests.post(reportUrl)
         pass
 
     def request(self,resources,data):
@@ -39,7 +39,7 @@ class Events(object):
        # return {
        #     'type' : 'container_created',
        #     'container' : json.dumps(container),
-       #     'is_netns_created' : netns == None,
+       #     'is_netns_created' : netns != None,
        #     'netns' : json.dumps(netns)
        # }
 

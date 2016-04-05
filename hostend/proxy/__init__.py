@@ -138,12 +138,12 @@ class DockerProxy(Proxy) :
 
 
     def _after_create_container(self,container,bindNs = None):
-        # if bindNs :
-        #     bindNs = bindNs.__dict__
-        # else :
-        #     bindNs = {}
-        # self.controller.report(Events.container_created_event(container.__dict__,bindNs))
-        pass
+        if bindNs :
+            bindNs = bindNs.__dict__
+        else :
+            bindNs = {}
+        self.controller.report(Events.container_created_event(container.__dict__,bindNs))
+
 
 
 
