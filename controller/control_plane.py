@@ -322,7 +322,7 @@ class NetnsExController(ControllerBase):
             'dpId' : '',
             'netnsId' : container_raw['netnsId'],
             'id' : container_raw['id'],
-            'create_time' : container_raw['create_time'],
+            'create_time' : container_raw['createTime'],
             'servicePort' : container_raw.get('servicePort')
         }
 
