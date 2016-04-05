@@ -320,7 +320,7 @@ class NetnsExController(ControllerBase):
             'mac' : container_raw['mac'],
             'hostId' : container_raw['hostId'],
             'dpId' : '',
-            'netnsId' : container_raw['netns_id'],
+            'netnsId' : container_raw['netnsId'],
             'id' : container_raw['id'],
             'create_time' : container_raw['create_time'],
             'servicePort' : container_raw.get('servicePort')
