@@ -8,7 +8,7 @@ import copy
 
 class CreateContainerHandler(RequestHandler):
     @gen.coroutine
-    def get(self):
+    def post(self):
         ip = self.get_argument('ip')
         netns = self.get_argument('netns',default=None)
         image = self.get_argument('image',default='ubuntu')

@@ -231,6 +231,7 @@ class NetnsExController(ControllerBase):
 
     @route('get_host_id', url+'/getHostId/{hostMac}/{transIp}', methods=['GET'],requirements={'hostMac':r'[a-z0-9:]+','transIp':r'[0-9\\.]+'})
     def list_mac_table(self, req, **kwargs):
+        print self.persistent.persistent
         reply = {}
         hostMac = kwargs['hostMac']
         transIp = kwargs['transIp']
@@ -238,18 +239,19 @@ class NetnsExController(ControllerBase):
         if host :
             reply['id'] = host['_id']
         else :
-            host = self.persistent.save('host',{'mac':hostMac,'containers':[]})
+            host = self.persistent.save('host',{'mac':hostMac,'transIp':transIp,'containers':[]})
             reply['id'] = host['_id']
         return self.successReturn(reply)
 
     @route('create_container', url+'/createContainer', methods=['POST'])
     def create_container(self, req, **kwargs):
-        print req.body
-        print req.environ
+        # print req.body
+        # print req.environ
         data = cgi.parse_multipart(req.body_file,{'boundary':self._getBoundary(req)})
         ip = data.get('ip')[0]
-        host = self.persistent.findOne('host',{'id':data.get('host')[0]})
+        host = self.persistent.findOne('host',{'_id':data.get('host')[0]}) if 'host' in data else None
         image = data.get('image')[0] if 'image' in data else None
+        servicePort = data.get('servicePort')[0] if 'servicePort' in data else -1
         if ip and host :
             result = self.request_host_to_create_container(host,ip,image)
             print result
@@ -295,7 +297,7 @@ class NetnsExController(ControllerBase):
         return Response(content_type='application/json', body=json.dumps({'state':'failed','reason':reason}))
 
     def request_host_to_create_container(self,host,ip,servicePort=-1,image=None):
-        host = self.persistent.findOne('host',{'_id':host})
+        # host = self.persistent.findOne('host',{'_id':host})
         if 'transIp' in host :
             url = "http://%s:%d/createContainer"%(host['transIp'],conf['client_port'])
             netns = self.persistent.findOne('netns',{'ip':ip.split('/')[0]})

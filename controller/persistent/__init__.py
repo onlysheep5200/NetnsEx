@@ -72,36 +72,46 @@ class TestPersistent(DataPersistent) :
 
         if '_id' not in data :
             data['_id'] = str(uuid4())
-            self.persistent[data['_id']] = data
+            self.persistent[schema][data['_id']] = data
         return data
 
     def remove(self,schema,id):
+        if schema not in self.persistent :
+            return 0
         if not isinstance(id,list) :
             id = [id]
         for item in id :
-            del self.persistent[item]
+            del self.persistent[schema][item]
 
         return len(id)
 
     def update(self,schema,old,current):
-
+        self.persistent.setdefault(schema,{})
         if '_id' in old :
-            t = self.persistent.get(old['_id'])
+            t = self.persistent[schema].get(old['_id'])
             if t == None :
                 return 0
             t.update(current)
             return 1
         else :
             c = 0
-            for item in self.persistent.values() :
+            for item in self.persistent[schema].values() :
                 if self._dict_partial_equals(old,item) :
                     item.update(current)
                     c += 1
             return c
 
     def query(self,schema,conditions):
+        self.persistent.setdefault(schema,{})
         targets = []
-        for item in self.persistent.values() :
+
+        if '_id' in conditions :
+            print 'condition is :',conditions
+            key = conditions['_id']
+            targets.append(self.persistent[schema].get(key))
+            return targets
+
+        for item in self.persistent[schema].values() :
             if self._dict_partial_equals(conditions,item) :
                 targets.append(item)
         return targets
@@ -116,8 +126,9 @@ class TestPersistent(DataPersistent) :
 
 
     def _dict_partial_equals(self,dict1,dict2):
-        for key in dict1 :
-            if dict1[key] != dict2.get(key) :
+        first,last = (dict2,dict1) if len(dict1.keys()) > len(dict2.keys()) else (dict1,dict2)
+        for key in first :
+            if first[key] != last.get(key):
                 return False
 
         return True
