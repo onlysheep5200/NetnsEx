@@ -16,6 +16,7 @@ from proxy import *
 import docker
 import json
 from handlers import *
+from concurrent.futures import  ThreadPoolExecutor
 
 config = json.load(open('config.json','r'))
 controller = Controller()
@@ -35,7 +36,8 @@ define("port", default=8000, help="run on the given port", type=int)
 class Application(tornado.web.Application):
     def __init__(self):
         handlers = [
-            (r'/createContainer',CreateContainerHandler)
+            (r'/createContainer',CreateContainerHandler),
+            (r'/bootSelf',BootSelfHandler)
         ]
 
         settings = {
@@ -48,6 +50,7 @@ class Application(tornado.web.Application):
         self.host = host
         self.controller = controller
         self.containerProxy =  DockerProxy(docker.Client('unix://var/run/docker.sock'),self.host,self.controller)
+        self.executionPool = ThreadPoolExecutor(max_workers=20)
 
         tornado.web.Application.__init__(self, handlers, **settings)
 

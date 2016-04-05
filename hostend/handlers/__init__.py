@@ -5,6 +5,9 @@ from tornado import gen
 import uuid
 import tornado.escape
 import copy
+import subprocess
+import shlex
+from lib.tools import command_exec
 
 class CreateContainerHandler(RequestHandler):
     @gen.coroutine
@@ -16,9 +19,16 @@ class CreateContainerHandler(RequestHandler):
         servicePort = self.get_argument('servicePort')
         container,netns = self.application.containerProxy.create_container(ip,netns,image=image,command='/bin/sh',stdin_open=True,tty=True,detach=True)
         ns = copy.deepcopy(netns.__dict__)
-	print container.mac
         container = copy.deepcopy(container.__dict__)
         container['servicePort'] = servicePort
-	print container
         # del ns['containers']
         self.write(dict(serialId = serialId,container = container,netns = ns))
+
+class BootSelfHandler(RequestHandler):
+    @gen.coroutine
+    def get(self):
+        pid = self.get_argument('pid')
+        cmd = 'ip netns exec %s ping -c 1 localhost'%pid
+        self.application.executionPool.submit(command_exec,cmd)
+        self.write(dict(state='success'))
+

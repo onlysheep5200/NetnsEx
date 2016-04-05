@@ -40,7 +40,7 @@ class NetnsExtension(app_manager.RyuApp):
         datapath = ev.msg.datapath
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
-
+        print 'new datapath : %s'%datapath.id
         # install table-miss flow entry
         #
         # We specify NO BUFFER to max_len of the output action due to
@@ -112,7 +112,7 @@ class NetnsExtension(app_manager.RyuApp):
         if ip :
             self._operate_with_ip(in_port,datapath,ip,sendContainer,netns,eth)
 
-        if arp :
+        if arp_pkt :
             self._operate_with_arp(msg,datapath,arp_pkt,sendContainer,netns,eth)
 
         # dpid = datapath.id
@@ -207,7 +207,7 @@ class NetnsExtension(app_manager.RyuApp):
             container['portId'] = in_port
             container['dpId'] = datapath.id
             #保存最新的容器信息
-            self.persistent.save('container',{'_id':container['_id']},container)
+            self.persistent.update('container',{'_id':container['_id']},container)
 
         return container
 
@@ -234,7 +234,7 @@ class NetnsExController(ControllerBase):
 
 
     @route('get_host_id', url+'/getHostId/{hostMac}/{transIp}', methods=['GET'],requirements={'hostMac':r'[a-z0-9:]+','transIp':r'[0-9\\.]+'})
-    def list_mac_table(self, req, **kwargs):
+    def get_host_id(self, req, **kwargs):
         print self.persistent.persistent
         reply = {}
         hostMac = kwargs['hostMac']
@@ -260,12 +260,12 @@ class NetnsExController(ControllerBase):
             result = self.request_host_to_create_container(host,ip,image)
             print result
             if 'container' in result :
-                newContainer = self.persistent.save(self.parse_container(result['container']))
+                newContainer = self.persistent.save('container',self.parse_container(result['container']))
             else :
                 return self.failReturn("Fail to create container")
 
             if 'netns' in result :
-                netns = self.persistent.save(self.parse_netns(result['netns']))
+                netns = self.persistent.save('netns',self.parse_netns(result['netns'],ip))
             else :
                 netns = self.persistent.findOne(newContainer['netnsId'])
             netns.setdefault('containers',[])
@@ -282,7 +282,7 @@ class NetnsExController(ControllerBase):
                     netns['containerPortMapping'][port] = newContainer['_id']
 
             self.persistent.update('netns',{'_id':netns['_id']},netns)
-
+            self.request_container_to_boot_self(host,newContainer)
             return self.successReturn({
                 'container':newContainer,
                 'netns' : netns
@@ -318,6 +318,13 @@ class NetnsExController(ControllerBase):
         else :
             return {}
 
+    def request_container_to_boot_self(self,host,container):
+        if 'pid' not in container :
+            print 'No Pid Field In Container !!!'
+            return
+        requests.get("http://%s:%d/bootSelf"%(host['transIp'],conf['client_port']),params = {'pid':container['pid']})
+
+
     def parse_container(self,container_raw):
         return {
             'portId' : '',
@@ -327,14 +334,15 @@ class NetnsExController(ControllerBase):
             'netnsId' : container_raw['netnsId'],
             'id' : container_raw['id'],
             'create_time' : container_raw['createTime'],
-            'servicePort' : container_raw.get('servicePort')
+            'servicePort' : container_raw.get('servicePort'),
+            'pid' : container_raw['pid']
         }
 
-    def parse_netns(self,netns_raw):
+    def parse_netns(self,netns_raw,ip):
         return {
             '_id' : netns_raw['uuid'],
-            'ip' : netns_raw['ip'].split('/')[0],
-            'cidrMask' : netns_raw['ip'].split('/')[1] if len(netns_raw['ip'].split('/'))>=2 else '',
+            'ip' : ip.split('/')[0],
+            'cidrMask' : ip.split('/')[1] if len(ip.split('/'))>=2 else '',
             'containerPortMapping' : {},
             'hosts' : [],
             'containers' : [],
