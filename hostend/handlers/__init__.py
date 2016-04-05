@@ -15,7 +15,8 @@ class CreateContainerHandler(RequestHandler):
         serialId = self.get_argument('serialId')
         servicePort = self.get_argument('servicePort')
         container,netns = self.application.containerProxy.create_container(ip,netns,image=image,command='/bin/sh',stdin_open=True,tty=True,detach=True)
-        print container
         ns = copy.deepcopy(netns.__dict__)
+        container = copy.deepcopy(container.__dict__)
+        container['servicePort'] = servicePort
         # del ns['containers']
-        self.write(dict(serialId = serialId,container = container.__dict__.update({'servicePort':servicePort}),netns = ns))
+        self.write(dict(serialId = serialId,container = container,netns = ns))
