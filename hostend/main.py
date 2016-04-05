@@ -27,6 +27,8 @@ data = controller.request('getHostId',[host.mac,host.transportIP])
 if 'uuid' in data :
     host.uuid = data['uuid']
 
+print 'my host id is : %s'%host.uuid
+
 
 define("port", default=8000, help="run on the given port", type=int)
 
