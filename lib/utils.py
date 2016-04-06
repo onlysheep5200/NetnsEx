@@ -30,7 +30,7 @@ class Host(object):
             cls.host = Host()
             cls.host.mac = switchInterfaceInfo[netifaces.AF_LINK][0]['addr']
             cls.host.transportIP = transportInterfaceInfo[netifaces.AF_INET][0]['addr']
-            cls.host.switchIP = switchInterfaceInfo[netifaces.AF_INET][0]['addr']
+            #cls.host.switchIP = switchInterfaceInfo[netifaces.AF_INET][0]['addr']
             cls.host.uuid = uuid
             cls.host.switchInterface = {
                 'name' : switchInterface,

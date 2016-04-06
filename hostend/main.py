@@ -24,7 +24,7 @@ controller.reportUrl = config.get('reportUrl')
 controller.requestUrl = config.get('requestUrl')
 
 host = Host.currentHost('',switchInterface=config['switchName'],transportInterface=config['transportInterface'])
-data = controller.request('getHostId',[host.mac,host.transportIP,host.switchIP])
+data = controller.request('getHostId',[host.mac,host.transportIP,host.transportIP])
 if data['state'] == 'success':
     host.uuid = data['data']['id']
 print host
