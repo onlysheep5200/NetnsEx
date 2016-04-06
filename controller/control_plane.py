@@ -10,7 +10,10 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet,ipv4,icmp,arp
 from ryu.lib.packet import ether_types
 from ryu.app.wsgi import ControllerBase, WSGIApplication, route
+from ryu.services.protocols.ovsdb import api as ovsdb
+from ryu.services.protocols.ovsdb import event as ovsdb_event
 from ryu.lib import dpid as dpid_lib
+from ryu.lib.ovs.bridge import OVSBridge,CONF
 from webob import Response
 import json
 from persistent import TestPersistent
@@ -32,8 +35,10 @@ class NetnsExtension(app_manager.RyuApp):
         self.mac_to_port = {}
         self.persistent = kwargs['persistent']
         self.allocated_ipaddrs = []
+        self.datapaths = {}
         wsgi = kwargs['wsgi']
         wsgi.register(NetnsExController, {instance_name : self,'persistent':self.persistent})
+
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -41,6 +46,13 @@ class NetnsExtension(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
         print 'new datapath : %s'%datapath.id
+        self.datapaths[datapath.id] = {'datapath':datapath}
+        self.mapping_datapath_with_host(datapath=datapath)
+        addr = 'tcp:%s:6632'%datapath.address[0]
+        bridge = OVSBridge(CONF,datapath.id,addr)
+        bridge.init()
+        print bridge.get_port_name_list()
+        print bridge.get_tunnel_port('vxlan1',tunnel_type='vxlan')
         # install table-miss flow entry
         #
         # We specify NO BUFFER to max_len of the output action due to
@@ -206,15 +218,32 @@ class NetnsExtension(app_manager.RyuApp):
             print 'container with mac %s connect to port %s'%(container['mac'],in_port)
             container['portId'] = in_port
             container['dpId'] = datapath.id
+            print container
             #保存最新的容器信息
             self.persistent.update('container',{'_id':container['_id']},container)
 
         return container
 
-
-
-
-
+    def mapping_datapath_with_host(self,datapath=None,host=None):
+        if datapath :
+            addr = datapath.address[0]
+            host = self.persistent.findOne('host',{'switchIp':addr})
+            if host :
+                host['dpid'] = datapath.id
+                self.persistent.update('host',{'_id':host['_id']},host)
+                self.datapaths[datapath.id]['host'] = host
+            return host
+        elif host :
+            switchIp = host['switchIp']
+            for item in self.datapaths.values() :
+                dp = item['datapath']
+                addr = dp.address[0]
+                if addr == switchIp :
+                    host['dpid'] = dp.id
+                    self.persistent.update('host',{'_id':host['_id']},host)
+                    item['host'] = host
+                    return host
+        return None
 
     def _transport_flow_to_container(self,pkt,netns):
         pass
@@ -229,22 +258,24 @@ class NetnsExController(ControllerBase):
 
     def __init__(self, req, link, data, **config):
         super(NetnsExController, self).__init__(req, link, data, **config)
-        self.simpl_switch_spp = data[instance_name]
+        self.app = data[instance_name]
         self.persistent = data['persistent']
 
 
-    @route('get_host_id', url+'/getHostId/{hostMac}/{transIp}', methods=['GET'],requirements={'hostMac':r'[a-z0-9:]+','transIp':r'[0-9\\.]+'})
+    @route('get_host_id', url+'/getHostId/{hostMac}/{transIp}/{switchIp}', methods=['GET'],requirements={'hostMac':r'[a-z0-9:]+','transIp':r'[0-9\\.]+'})
     def get_host_id(self, req, **kwargs):
         print self.persistent.persistent
         reply = {}
         hostMac = kwargs['hostMac']
         transIp = kwargs['transIp']
-        host = self.persistent.findOne('host',{'mac':hostMac,'transIp':transIp})
+        switchIp = kwargs['switchIp']
+        host = self.persistent.findOne('host',{'mac':hostMac,'transIp':transIp,'switchIp':switchIp})
         if host :
             reply['id'] = host['_id']
         else :
             host = self.persistent.save('host',{'mac':hostMac,'transIp':transIp,'containers':[]})
             reply['id'] = host['_id']
+        self.app.mapping_datapath_with_host(host=host)
         return self.successReturn(reply)
 
     @route('create_container', url+'/createContainer', methods=['POST'])
@@ -257,7 +288,7 @@ class NetnsExController(ControllerBase):
         image = data.get('image')[0] if 'image' in data else None
         servicePort = data.get('servicePort')[0] if 'servicePort' in data else -1
         if ip and host :
-            result = self.request_host_to_create_container(host,ip,image)
+            result = self.request_host_to_create_container(host,ip,servicePort=servicePort,image=image)
             print result
             if 'container' in result :
                 newContainer = self.persistent.save('container',self.parse_container(result['container']))

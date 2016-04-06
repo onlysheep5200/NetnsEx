@@ -32,6 +32,8 @@ from uuid import uuid4
             containers : 所包含的容器，记录_id
             mac : 主机的mac地址
             transIp : 发送请求的IP地址
+            switchIp : vxlan对应IP
+            dpid : 主机对应的datapath id
 
 
 '''
