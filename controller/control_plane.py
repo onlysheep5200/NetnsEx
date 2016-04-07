@@ -435,6 +435,7 @@ class NetnsExController(ControllerBase):
             'containerPortMapping' : {},
             'hosts' : [],
             'containers' : [],
+            'initHostId' : netns_raw['initHostId'],
         }
 
     def _getBoundary(self,req):

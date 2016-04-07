@@ -3,6 +3,7 @@ from utils import Host
 from datetime import datetime
 from tools import *
 from uuid import uuid4
+import json
 class NetworkNamespace(object) :
     '''
     NetworkNamespace : 描述网络命名空间的数据结构
@@ -28,6 +29,16 @@ class NetworkNamespace(object) :
         self.belongsTo = belongsTo
         self.createTime = now()
         self.uuid = str(uuid4())
+
+    @classmethod
+    def parseJson(cls,data):
+        if not isinstance(data,dict) :
+            data = json.loads(data)
+        netns = NetworkNamespace(data.get('initHostId'),data.get('ip')+'/'+data.get('port'))
+        netns.uuid = data.get('_id')
+        return netns
+
+
 
 
 
