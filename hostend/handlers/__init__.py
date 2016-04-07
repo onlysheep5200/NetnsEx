@@ -8,12 +8,15 @@ import copy
 import subprocess
 import shlex
 from lib.tools import command_exec
+from lib.net import NetworkNamespace
 
 class CreateContainerHandler(RequestHandler):
     @gen.coroutine
     def post(self):
         ip = self.get_argument('ip')
         netns = self.get_argument('netns',default=None)
+        if netns :
+            netns = NetworkNamespace.parseJson(netns)
         image = self.get_argument('image',default='ubuntu')
         serialId = self.get_argument('serialId')
         servicePort = self.get_argument('servicePort')
