@@ -17,7 +17,8 @@ class CreateContainerHandler(RequestHandler):
         image = self.get_argument('image',default='ubuntu')
         serialId = self.get_argument('serialId')
         servicePort = self.get_argument('servicePort')
-        container,netns = self.application.containerProxy.create_container(ip,netns,image=image,command='/bin/sh',stdin_open=True,tty=True,detach=True)
+        privateIp = self.get_argument('privateIp')
+        container,netns = self.application.containerProxy.create_container(ip,netns,privateIp=privateIp,image=image,command='/bin/sh',stdin_open=True,tty=True,detach=True)
         ns = copy.deepcopy(netns.__dict__)
         container = copy.deepcopy(container.__dict__)
         container['servicePort'] = servicePort

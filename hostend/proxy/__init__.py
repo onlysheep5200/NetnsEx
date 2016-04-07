@@ -35,7 +35,7 @@ class DockerProxy(Proxy) :
         self.host = host
         self.controller = controller
 
-    def create_container(self,ip,bindNetns=None,*args,**kwargs):
+    def create_container(self,ip,bindNetns=None,privateIp=None,*args,**kwargs):
         '''
         创建容器
         :param ip : 分配的IP地址
@@ -46,6 +46,8 @@ class DockerProxy(Proxy) :
         :return:
         '''
         container = {}
+        if not privateIp :
+            privateIp = ip.split('/')[0]
         try :
             hostConfig = kwargs.get('host_config') if isinstance(kwargs.get('host_config'),dict) else self.client.create_host_config()
             if bindNetns and isinstance(bindNetns,NetworkNamespace) and bindNetns.initHostId == self.host.uuid:
@@ -53,7 +55,6 @@ class DockerProxy(Proxy) :
             else :
                 hostConfig['NetworkMode'] = 'none'
             kwargs['host_config'] = hostConfig
-
             container = self.client.create_container(*args,**kwargs)
             self.client.start(container=container.get('Id'))
             containerInfo = self.client.inspect_container(container.get('Id'))
@@ -69,7 +70,7 @@ class DockerProxy(Proxy) :
             self._add_veth_to_netns(pid,ip,bridge)
 
 
-            container = self._create_container_instance(containerInfo,self.host.switchInterface,bindNetns)
+            container = self._create_container_instance(containerInfo,self.host.switchInterface,bindNetns,privateIp=privateIp)
             self._after_create_container(container,bindNs=bindNetns)
             return container,bindNetns
 
@@ -93,7 +94,7 @@ class DockerProxy(Proxy) :
             command = 'ln -s %s %s'%(dir,target)
             command_exec(command)
 
-    def _add_veth_to_netns(self,pid,ip,bridge='docker0'):
+    def _add_veth_to_netns(self,pid,ip,bridge='docker0',privateIp=None):
         if not ip :
             raise MissArgumentException('ip')
         veth = 'veth_%d'%pid
@@ -102,7 +103,7 @@ class DockerProxy(Proxy) :
                     'ovs-vsctl add-port %s %s'%(bridge,veth),
                     'ip link set %s netns %d'%(peer,pid),
                     'ip netns exec %d ip link set dev %s name eth0'%(pid,peer),
-                    'ip netns exec %d ip addr add %s dev eth0'%(pid,ip),
+                    'ip netns exec %d ip addr add %s dev eth0'%(pid,ip if not privateIp else privateIp),
                     'ip netns exec %d ip link set eth0 up'%(pid),
                     'ip netns exec %d ip addr del 127.0.0.1/8 dev lo'%(pid),
                     'ip netns exec %d ip route add default dev eth0'%(pid),
@@ -120,7 +121,7 @@ class DockerProxy(Proxy) :
         return netns
 
 
-    def _create_container_instance(self,containerInfo,switch,netns,belongTo=None):
+    def _create_container_instance(self,containerInfo,switch,netns,belongTo=None,privateIp=None):
         container = Container()
         container.belongsTo = belongTo
         container.createTime = now()
@@ -130,6 +131,7 @@ class DockerProxy(Proxy) :
         container.pid = containerInfo['State']['Pid']
         container.state = CONTAINER_STATE_ACTIVE
         container.switch = switch
+        container.privateIp = privateIp
         p = subprocess.Popen(shlex.split('ip netns exec %d ifconfig eth0'%containerInfo['State']['Pid']),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         if p.wait() == 0 :
             s = p.stdout.read()
