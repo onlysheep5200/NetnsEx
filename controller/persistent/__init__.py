@@ -17,6 +17,7 @@ from uuid import uuid4
             _id : persistent赋予容器的ID
             servicePort : ''
             create_time : 创建时间
+            privateIp : 每个容器所专有的私有IP，用于IP包的转发
 
         netns :
             ip : Namespace对应的IP地址
@@ -74,6 +75,7 @@ class TestPersistent(DataPersistent) :
 
         if '_id' not in data :
             data['_id'] = str(uuid4())
+        if data['_id'] not in self.persistent[schema]:
             self.persistent[schema][data['_id']] = data
         return data
 
@@ -108,7 +110,7 @@ class TestPersistent(DataPersistent) :
         targets = []
 
         if '_id' in conditions :
-            print 'condition is :',conditions
+            #print 'condition is :',conditions
             key = conditions['_id']
             targets.append(self.persistent[schema].get(key))
             return targets

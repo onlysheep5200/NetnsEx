@@ -7,7 +7,7 @@ from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet
-from ryu.lib.packet import ethernet,ipv4,icmp,arp
+from ryu.lib.packet import ethernet,ipv4,icmp,arp,tcp,udp
 from ryu.lib.packet import ether_types
 from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 from ryu.services.protocols.ovsdb import api as ovsdb
@@ -20,6 +20,7 @@ from persistent import TestPersistent
 import requests
 import uuid
 import cgi
+import ipgen
 
 instance_name = 'netns_api_app'
 url = '/netnsex'
@@ -38,6 +39,8 @@ class NetnsExtension(app_manager.RyuApp):
         self.datapaths = {}
         wsgi = kwargs['wsgi']
         wsgi.register(NetnsExController, {instance_name : self,'persistent':self.persistent})
+        self.tunnels = {}
+        self.containerFlows = {}
 
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
@@ -51,15 +54,10 @@ class NetnsExtension(app_manager.RyuApp):
         addr = 'tcp:%s:6632'%datapath.address[0]
         bridge = OVSBridge(CONF,datapath.id,addr)
         bridge.init()
-        print bridge.get_port_name_list()
-        print bridge.get_tunnel_port('vxlan1',tunnel_type='vxlan')
-        # install table-miss flow entry
-        #
-        # We specify NO BUFFER to max_len of the output action due to
-        # OVS bug. At this moment, if we specify a lesser number, e.g.,
-        # 128, OVS will send Packet-In with invalid buffer_id and
-        # truncated packet data. In that case, we cannot output packets
-        # correctly.  The bug has been fixed in OVS v2.1.0.
+        print bridge.db_get_val('Interface','vxlan1','type')
+
+
+
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
@@ -99,13 +97,16 @@ class NetnsExtension(app_manager.RyuApp):
 
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocols(ethernet.ethernet)[0]
-        icmp_pkt = pkt.get_protocols(icmp.icmp) if icmp in pkt.protocols else None
-        ip = pkt.get_protocols(ipv4.ipv4) if ipv4.ipv4 in pkt.protocols else None
-        arp_pkt = pkt.get_protocols(arp.arp) if arp.arp in pkt.protocols else None
+        icmp_pkt = pkt.get_protocols(icmp.icmp)
+        ip = pkt.get_protocols(ipv4.ipv4)
+        arp_pkt = pkt.get_protocols(arp.arp)
+        tcp_pkt = pkt.get_protocols(tcp.tcp)
+        udp_pkt = pkt.get_protocols(udp.udp)
 
 
         if eth.ethertype == ether_types.ETH_TYPE_LLDP:
             # ignore lldp packet
+            self.logger.info('LLDP PACKET')
             return
         dst = eth.dst
         src = eth.src
@@ -115,57 +116,95 @@ class NetnsExtension(app_manager.RyuApp):
         #取得发包容器所属的netns
         sendContainer = self._update_container_info(datapath,in_port,src)
         if not sendContainer :
+            self.logger.info('no sendcontainer recognize')
             return
         netns = self.persistent.findOne('netns',{'_id':sendContainer['netnsId']})
 
-        if icmp_pkt :
-            self._operate_with_icmp(in_port,datapath,icmp_pkt,sendContainer,netns,eth)
-
-        if ip :
-            self._operate_with_ip(in_port,datapath,ip,sendContainer,netns,eth)
-
         if arp_pkt :
+            arp_pkt = arp_pkt[0]
             self._operate_with_arp(msg,datapath,arp_pkt,sendContainer,netns,eth)
 
-        # dpid = datapath.id
-        # self.mac_to_port.setdefault(dpid, {})
-        #
-        # self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
-        #
-        # # learn a mac address to avoid FLOOD next time.
-        # self.mac_to_port[dpid][src] = in_port
-        #
-        # if dst in self.mac_to_port[dpid]:
-        #     out_port = self.mac_to_port[dpid][dst]
-        # else:
-        #     out_port = ofproto.OFPP_FLOOD
-        #
-        # actions = [parser.OFPActionOutput(out_port)]
-        #
-        # # install a flow to avoid packet_in next time
-        # if out_port != ofproto.OFPP_FLOOD:
-        #     match = parser.OFPMatch(in_port=in_port, eth_dst=dst)
-        #     # verify if we have a valid buffer_id, if yes avoid to send both
-        #     # flow_mod & packet_out
-        #     if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-        #         self.add_flow(datapath, 1, match, actions, msg.buffer_id)
-        #         return
-        #     else:
-        #         self.add_flow(datapath, 1, match, actions)
-        # data = None
-        # if msg.buffer_id == ofproto.OFP_NO_BUFFER:
-        #     data = msg.data
-        #
-        # out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
-        #                           in_port=in_port, actions=actions, data=data)
-        # datapath.send_msg(out)
+        elif icmp_pkt :
+            print 'icmp packet coming'
+            icmp_pkt = icmp_pkt[0]
+            self._operate_with_icmp(msg,datapath,icmp_pkt,sendContainer,netns,eth)
+
+        elif tcp_pkt or udp_pkt :
+            self._operate_with_transport_layer(msg,datapath,tcp_pkt[0] if tcp_pkt else udp_pkt[0],ip[0],sendContainer,netns,eth)
+
+        elif ip :
+            print 'ip packet comming'
+            ip = ip[0]
+            self._operate_with_ip(in_port,datapath,ip,sendContainer,netns,eth)
+
 
     def _operate_with_icmp(self,msg,datapath,icmp_pkt,send_container,netns,eth):
         pass
 
     def _operate_with_ip(self,msg,datapath,ip_pkt,send_container,netns,eth):
-
         pass
+
+    def _operate_with_transport_layer(self,msg,datapath,pkt,ip_pkt,send_container,netns,eth):
+        dst_port = pkt.dst_port
+        dst_ip = ip_pkt.dst
+        dst_netns = self.persistent.findOne('netns',{'ip':dst_ip}) if dst_ip != 'localhost' and dst_ip != netns['ip'] else netns
+        target_container = None
+        #此时，目的IP为netns对应的IP地址
+        if dst_netns :
+            target_container = dst_netns['containerPortMapping'].get(dst_port)
+        #此时，目的IP为privateIP，是返回包
+        else:
+            target_container = self.persistent.findOne('container',{'privateIp':dst_ip})
+
+        #此时，目的IP为系统外的IP地址
+        if not target_container :
+            self.logger.log('cannot find target coantainer for port %s!'%dst_port)
+            #TODO:修改IP包的目标地址，并将起发往in_port
+            return
+
+        #同一个netns下
+        if target_container['netnsId'] == send_container['netnsId'] :
+            self._transport_in_netns(msg,datapath,pkt,ip_pkt.src,dst_ip,dst_port,send_container,target_container,dst_netns)
+        else :
+            pass
+            # target_port = target_container['portId']
+            # match = parser.OFPMatch(tcp_dst=dst_port,ipv4_dst=('127.0.0.1',dst_netns['ip']))
+            # actions = []
+            # if dst_ip == '127.0.0.1' :
+            #     actions.append(parser.OFPActionSetField(ipv4_dst=dst_netns['ip']))
+            # actions.append(parser.OFPActionOutput(target_port))
+            # data = None
+            # if msg.buffer_id == datapath.ofproto.OFP_NO_BUFFER :
+            #     data = msg.data
+            # out = parser.OFPPacketOut(datapath=datapath,buffer_id = msg.buffer_id,in_port = msg.match['in_port'],actions=actions,data = data)
+            # datapath.send_msg(out)
+            # self.add_flow(datapath,12345,match,actions)
+
+
+
+    def _transport_in_netns(self,msg,datapath,pkt,src_ip,dst_ip,dst_port,send_container,target_container,dst_netns):
+         target_port = target_container['portId']
+         parser = datapath.ofproto_parser
+         #此时，目的IP为netns对应的IP地址或localhost
+         if dst_ip == '127.0.0.1' or dst_ip == dst_netns['ip'] :
+            match = parser.OFPMatch(tcp_dst=dst_port,ipv4_dst=('127.0.0.1',dst_netns['ip']))
+         #此时，目的IP为privateIP，是返回包
+         else :
+            match = parser.OFPMatch(ipv4_dst=dst_ip)
+         actions = []
+         if dst_ip == '127.0.0.1' or dst_ip == dst_netns['ip'] :
+             actions.append(parser.OFPActionSetField(ipv4_dst=target_container['privateIp']))
+         else :
+             actions.append(parser.OFPActionSetField(ipv4_src='127.0.0.1'))
+         actions.append(parser.OFPActionOutput(target_port))
+         data = None
+         if msg.buffer_id == datapath.ofproto.OFP_NO_BUFFER :
+             data = msg.data
+         out = parser.OFPPacketOut(datapath=datapath,buffer_id = msg.buffer_id,in_port = msg.match['in_port'],actions=actions,data = data)
+         datapath.send_msg(out)
+         self.add_flow(datapath,12345,match,actions)
+
+
 
     def _operate_with_arp(self,msg,datapath,arp_pkt,send_container,netns,eth):
         #由控制器代理回复arp请求
@@ -173,10 +212,20 @@ class NetnsExtension(app_manager.RyuApp):
         actions = []
         in_port = msg.match['in_port']
         if opcode == arp.ARP_REQUEST :
+            self.logger.info('arp request from port %d'%in_port)
             actions.append(datapath.ofproto_parser.OFPActionOutput(in_port))
             dst_ip = arp_pkt.dst_ip
-            dst_netns = self.persistent.findOne('netns',{'ip':dst_ip})
+            self.logger.info('dst ip is : %s'%dst_ip)
+            #判断是否是本地IP
+            if dst_ip == '127.0.0.1' :
+                dst_netns = self.persistent.findOne('netns',{'_id':send_container['netnsId']})
+            else :
+                dst_netns = self.persistent.findOne('netns',{'ip':dst_ip})
+            print dst_netns
+            print self.persistent.persistent
+
             if dst_netns :
+                print 'netns id is %s'%dst_netns['_id']
                 containerWithNetns = self.persistent.findOne('container',{'netnsId':dst_netns['_id']})
                 reply = packet.Packet()
                 reply.add_protocol(ethernet.ethernet(ethertype=eth.ethertype,dst=eth.src,src=containerWithNetns['mac']))
@@ -191,7 +240,7 @@ class NetnsExtension(app_manager.RyuApp):
 
                 out = datapath.ofproto_parser.OFPPacketOut(
                     datapath=datapath,
-                    buffer_id = msg.buffer_id,
+                    buffer_id = datapath.ofproto.OFP_NO_BUFFER,
                     in_port=datapath.ofproto.OFPP_CONTROLLER,
                     actions = actions,
                     data = reply.data
@@ -215,10 +264,9 @@ class NetnsExtension(app_manager.RyuApp):
     def _update_container_info(self,datapath,in_port,mac):
         container = self.persistent.findOne('container',{'mac':mac})
         if container :
-            print 'container with mac %s connect to port %s'%(container['mac'],in_port)
+            #self.logger.info('container with mac %s connect to port %s'%(container['mac'],in_port))
             container['portId'] = in_port
             container['dpId'] = datapath.id
-            print container
             #保存最新的容器信息
             self.persistent.update('container',{'_id':container['_id']},container)
 
@@ -259,7 +307,7 @@ class NetnsExController(ControllerBase):
     def __init__(self, req, link, data, **config):
         super(NetnsExController, self).__init__(req, link, data, **config)
         self.app = data[instance_name]
-        self.persistent = data['persistent']
+        self.persistent = self.app.persistent
 
 
     @route('get_host_id', url+'/getHostId/{hostMac}/{transIp}/{switchIp}', methods=['GET'],requirements={'hostMac':r'[a-z0-9:]+','transIp':r'[0-9\\.]+'})
@@ -273,7 +321,7 @@ class NetnsExController(ControllerBase):
         if host :
             reply['id'] = host['_id']
         else :
-            host = self.persistent.save('host',{'mac':hostMac,'transIp':transIp,'containers':[]})
+            host = self.persistent.save('host',{'mac':hostMac,'transIp':transIp,'switchIp':switchIp,'containers':[]})
             reply['id'] = host['_id']
         self.app.mapping_datapath_with_host(host=host)
         return self.successReturn(reply)
@@ -287,23 +335,20 @@ class NetnsExController(ControllerBase):
         host = self.persistent.findOne('host',{'_id':data.get('host')[0]}) if 'host' in data else None
         image = data.get('image')[0] if 'image' in data else None
         servicePort = data.get('servicePort')[0] if 'servicePort' in data else -1
+        privateIp = ipgen.generateIp()
         if ip and host :
-            result = self.request_host_to_create_container(host,ip,servicePort=servicePort,image=image)
+            result = self.request_host_to_create_container(host,ip,servicePort=servicePort,image=image,privateIp=ipgen.generateIp())
             print result
             if 'container' in result :
                 newContainer = self.persistent.save('container',self.parse_container(result['container']))
             else :
                 return self.failReturn("Fail to create container")
 
-            if 'netns' in result :
-                netns = self.persistent.save('netns',self.parse_netns(result['netns'],ip))
-            else :
-                netns = self.persistent.findOne(newContainer['netnsId'])
-            netns.setdefault('containers',[])
-            netns['containers'].append(newContainer['_id'])
-
-            if newContainer['hostId'] not in netns['hosts'] :
-                netns['hosts'].append(newContainer['hostId'])
+            netns = self.persistent.findOne('netns',{'_id':newContainer['netnsId']})
+            if not netns :
+                if 'netns' in result :
+                    print 'parse netns now!'
+                    netns = self.persistent.save('netns',self.parse_netns(result['netns'],ip))
 
             if 'servicePort' in newContainer :
                 port = newContainer['servicePort']
@@ -312,7 +357,15 @@ class NetnsExController(ControllerBase):
                         return self.failReturn("Duplicate port : %d"%port)
                     netns['containerPortMapping'][port] = newContainer['_id']
 
+            netns.setdefault('containers',[])
+            netns['containers'].append(newContainer['_id'])
+
+            if newContainer['hostId'] not in netns['hosts'] :
+                netns['hosts'].append(newContainer['hostId'])
+
             self.persistent.update('netns',{'_id':netns['_id']},netns)
+            print self.persistent.persistent
+
             self.request_container_to_boot_self(host,newContainer)
             return self.successReturn({
                 'container':newContainer,
@@ -331,18 +384,22 @@ class NetnsExController(ControllerBase):
     def failReturn(self,reason):
         return Response(content_type='application/json', body=json.dumps({'state':'failed','reason':reason}))
 
-    def request_host_to_create_container(self,host,ip,servicePort=-1,image=None):
+    def request_host_to_create_container(self,host,ip,servicePort=-1,image=None,privateIp=None):
         # host = self.persistent.findOne('host',{'_id':host})
         if 'transIp' in host :
             url = "http://%s:%d/createContainer"%(host['transIp'],conf['client_port'])
             netns = self.persistent.findOne('netns',{'ip':ip.split('/')[0]})
+            if not privateIp :
+                privateIp = ip
             #是否应在此时建立network namespace ???
             data = {
                 'ip' : ip,
                 'serialId' : str(uuid.uuid4()),
                 'image' : image,
                 'servicePort' : servicePort,
-                'netns' : netns
+                'netns' : netns,
+                'privateIp' : privateIp+'/24'
+
             }
             r = requests.post(url,data=data)
             return r.json()
@@ -366,7 +423,8 @@ class NetnsExController(ControllerBase):
             'id' : container_raw['id'],
             'create_time' : container_raw['createTime'],
             'servicePort' : container_raw.get('servicePort'),
-            'pid' : container_raw['pid']
+            'pid' : container_raw['pid'],
+            'private_ip' : container_raw.get('privateIp').split('/')[0]
         }
 
     def parse_netns(self,netns_raw,ip):
