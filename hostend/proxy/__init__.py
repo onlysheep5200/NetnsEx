@@ -11,6 +11,7 @@ import os.path
 from lib.container import *
 import re
 from hostend.controller import *
+import traceback
 class Proxy(object):
     """容器创建代理"""
     __metaclass__ = ABCMeta
@@ -46,12 +47,14 @@ class DockerProxy(Proxy) :
         :return:
         '''
         container = {}
+        print bindNetns
         if not privateIp :
             privateIp = ip.split('/')[0]
         try :
             hostConfig = kwargs.get('host_config') if isinstance(kwargs.get('host_config'),dict) else self.client.create_host_config()
             if bindNetns and isinstance(bindNetns,NetworkNamespace) and bindNetns.initHostId == self.host.uuid:
-                hostConfig['NetworkMode'] = 'container:%s'%bindNetns.creatorId
+                tid = bindNetns.hostContainerMapping[self.host.uuid]
+                hostConfig['NetworkMode'] = 'container:%s'%tid
             else :
                 hostConfig['NetworkMode'] = 'none'
             kwargs['host_config'] = hostConfig
@@ -84,7 +87,6 @@ class DockerProxy(Proxy) :
             if containerId :
                 self.client.stop(container['Id'])
                 self.client.remove_container(container['Id'])
-
             raise e
 
     def _link_netns_to_directory(self,pid):

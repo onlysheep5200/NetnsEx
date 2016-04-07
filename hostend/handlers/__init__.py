@@ -18,6 +18,8 @@ class CreateContainerHandler(RequestHandler):
 	print netns
         if netns and netns != 'null':
             netns = NetworkNamespace.parseJson(netns)
+        else : 
+            netns = None
         image = self.get_argument('image',default='ubuntu')
         serialId = self.get_argument('serialId')
         servicePort = self.get_argument('servicePort')
