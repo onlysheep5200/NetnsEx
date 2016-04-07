@@ -62,15 +62,16 @@ class DockerProxy(Proxy) :
             self.client.start(container=container.get('Id'))
             containerInfo = self.client.inspect_container(container.get('Id'))
             pid = containerInfo['State']['Pid']
-            self._link_netns_to_directory(pid)
-            bridge = 'docker0'
-            if self.host.switchInterface :
-                bridge = self.host.getSwitchName()
+            if hostConfig['NetworkMode'] == 'none' :
+                self._link_netns_to_directory(pid)
+                bridge = 'docker0'
+                if self.host.switchInterface :
+                    bridge = self.host.getSwitchName()
 
-            self._add_veth_to_netns(pid,bridge)
-            if not bindNetns :
-                bindNetns = self._create_netns(container,ip)
-            self._add_veth_to_netns(pid,ip,bridge)
+                self._add_veth_to_netns(pid,bridge)
+                if not bindNetns :
+                    bindNetns = self._create_netns(container,ip)
+                self._add_veth_to_netns(pid,ip,bridge)
 
 
             container = self._create_container_instance(containerInfo,self.host.switchInterface,bindNetns,privateIp=privateIp)
