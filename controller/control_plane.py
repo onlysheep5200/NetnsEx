@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import  sys
+import sys
 sys.path.append('..')
 from ryu.base import app_manager
 from ryu.controller import ofp_event
@@ -10,8 +10,6 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet,ipv4,icmp,arp,tcp,udp
 from ryu.lib.packet import ether_types
 from ryu.app.wsgi import ControllerBase, WSGIApplication, route
-from ryu.services.protocols.ovsdb import api as ovsdb
-from ryu.services.protocols.ovsdb import event as ovsdb_event
 from ryu.lib import dpid as dpid_lib
 from ryu.lib.ovs.bridge import OVSBridge,CONF
 from webob import Response
@@ -52,9 +50,9 @@ class NetnsExtension(app_manager.RyuApp):
         self.datapaths[datapath.id] = {'datapath':datapath}
         self.mapping_datapath_with_host(datapath=datapath)
         addr = 'tcp:%s:6632'%datapath.address[0]
-        bridge = OVSBridge(CONF,datapath.id,addr)
-        bridge.init()
-        print bridge.db_get_val('Interface','vxlan1','type')
+        # bridge = OVSBridge(CONF,datapath.id,addr)
+        # bridge.init()
+        # print bridge.db_get_val('Interface','vxlan1','type')
 
 
 
@@ -119,6 +117,9 @@ class NetnsExtension(app_manager.RyuApp):
             self.logger.info('no sendcontainer recognize')
             return
         netns = self.persistent.findOne('netns',{'_id':sendContainer['netnsId']})
+        if not netns :
+            self.logger.info('No Networknamespace exists !')
+            return
 
         if arp_pkt :
             arp_pkt = arp_pkt[0]
@@ -147,14 +148,16 @@ class NetnsExtension(app_manager.RyuApp):
     def _operate_with_transport_layer(self,msg,datapath,pkt,ip_pkt,send_container,netns,eth):
         dst_port = pkt.dst_port
         dst_ip = ip_pkt.dst
-        dst_netns = self.persistent.findOne('netns',{'ip':dst_ip}) if dst_ip != 'localhost' and dst_ip != netns['ip'] else netns
-        target_container = None
-        #此时，目的IP为netns对应的IP地址
-        if dst_netns :
-            target_container = dst_netns['containerPortMapping'].get(dst_port)
-        #此时，目的IP为privateIP，是返回包
-        else:
-            target_container = self.persistent.findOne('container',{'privateIp':dst_ip})
+        # dst_netns = self.persistent.findOne('netns',{'ip':dst_ip}) if dst_ip != '127.0.0.1' and dst_ip != netns['ip'] else netns
+        if dst_ip == '127.0.0.1' or dst_ip == netns['ip'] :
+            dst_netns = netns
+        else :
+            dst_netns = self.persistent.findOne('netns',{'ip':dst_ip})
+        if not dst_netns :
+            self.logger.info('No Netns exists !')
+            return
+
+        target_container = self.persistent.findOne('container',{'_id':dst_netns['containerPortMapping'][str(dst_port)]})
 
         #此时，目的IP为系统外的IP地址
         if not target_container :
@@ -185,24 +188,55 @@ class NetnsExtension(app_manager.RyuApp):
     def _transport_in_netns(self,msg,datapath,pkt,src_ip,dst_ip,dst_port,send_container,target_container,dst_netns):
          target_port = target_container['portId']
          parser = datapath.ofproto_parser
-         #此时，目的IP为netns对应的IP地址或localhost
-         if dst_ip == '127.0.0.1' or dst_ip == dst_netns['ip'] :
-            match = parser.OFPMatch(tcp_dst=dst_port,ipv4_dst=('127.0.0.1',dst_netns['ip']))
-         #此时，目的IP为privateIP，是返回包
+         src_port = pkt.src_port
+         #当源与目标在同一个主机上时
+         #同一个namespace之间的各个容器间只能通过localhost通信
+         if target_container['hostId'] == send_container['hostId'] :
+             actions = []
+             if dst_ip == '127.0.0.1' :
+                 #发出包
+                 actions.append(parser.OFPActionSetField(ipv4_dst=dst_netns['ip']))
+                 actions.append(parser.OFPActionSetField(ipv4_src='127.0.0.1'))
+                 actions.append(parser.OFPActionOutput(msg.match['in_port']))
+                 match = parser.OFPMatch(tcp_dst=dst_port,ipv4_dst=dst_ip,ipv4_src = src_ip)
+                 self.add_flow(datapath,12345,match,actions)
+
+                 #返回包
+                 backMatch = parser.OFPMatch(tcp_dst=src_port,ipv4_dst='127.0.0.1',ipv4_src=dst_netns['ip'])
+                 actions = [
+                     parser.OFPActionSetField(ipv4_dst = dst_netns['ip']),
+                     parser.OFPActionSetField(ipv4_src='127.0.0.1'),
+                     parser.OFPActionOutput(msg.match['in_port'])
+                 ]
+                 self.add_flow(datapath,12345,backMatch,actions)
+
+                 data = None
+                 if msg.buffer_id == datapath.ofproto.OFP_NO_BUFFER :
+                     data = msg.data
+                 out = parser.OFPPacketOut(datapath=datapath,buffer_id=msg.buffer_id,in_port = msg.match['in_port'],actions=actions,data = data)
+                 datapath.send_msg(out)
+             else :
+                 pass
          else :
-            match = parser.OFPMatch(ipv4_dst=dst_ip)
-         actions = []
-         if dst_ip == '127.0.0.1' or dst_ip == dst_netns['ip'] :
-             actions.append(parser.OFPActionSetField(ipv4_dst=target_container['privateIp']))
-         else :
-             actions.append(parser.OFPActionSetField(ipv4_src='127.0.0.1'))
-         actions.append(parser.OFPActionOutput(target_port))
-         data = None
-         if msg.buffer_id == datapath.ofproto.OFP_NO_BUFFER :
-             data = msg.data
-         out = parser.OFPPacketOut(datapath=datapath,buffer_id = msg.buffer_id,in_port = msg.match['in_port'],actions=actions,data = data)
-         datapath.send_msg(out)
-         self.add_flow(datapath,12345,match,actions)
+             pass
+
+         # if dst_ip == '127.0.0.1' or dst_ip == dst_netns['ip'] :
+         #    match = parser.OFPMatch(tcp_dst=dst_port,ipv4_dst=('127.0.0.1',dst_netns['ip']))
+         # #此时，目的IP为privateIP，是返回包
+         # else :
+         #    match = parser.OFPMatch(ipv4_dst=dst_ip)
+         # actions = []
+         # if dst_ip == '127.0.0.1' or dst_ip == dst_netns['ip'] :
+         #     actions.append(parser.OFPActionSetField(ipv4_dst=target_container['privateIp']))
+         # else :
+         #     actions.append(parser.OFPActionSetField(ipv4_src='127.0.0.1'))
+         # actions.append(parser.OFPActionOutput(target_port))
+         # data = None
+         # if msg.buffer_id == datapath.ofproto.OFP_NO_BUFFER :
+         #     data = msg.data
+         # out = parser.OFPPacketOut(datapath=datapath,buffer_id = msg.buffer_id,in_port = msg.match['in_port'],actions=actions,data = data)
+         # datapath.send_msg(out)
+         # self.add_flow(datapath,12345,match,actions)
 
 
 
@@ -349,10 +383,15 @@ class NetnsExController(ControllerBase):
                 if 'netns' in result :
                     print 'parse netns now!'
                     netns = self.persistent.save('netns',self.parse_netns(result['netns'],ip))
+                    netns['creatorId'] = newContainer['id']
+                    self.persistent.update('netns',{'_id':netns['_id']},netns)
+            if newContainer['hostId'] not in netns['hostContainerMapping'] :
+                netns['hostContainerMapping'][newContainer['hostId']] = newContainer['id']
+                self.persistent.update('netns',{'_id':netns['_id']},netns)
 
             if 'servicePort' in newContainer :
                 port = newContainer['servicePort']
-                if port > 0 :
+                if int(port) > 0 :
                     if port in netns['containerPortMapping'] :
                         return self.failReturn("Duplicate port : %d"%port)
                     netns['containerPortMapping'][port] = newContainer['_id']
@@ -397,7 +436,7 @@ class NetnsExController(ControllerBase):
                 'serialId' : str(uuid.uuid4()),
                 'image' : image,
                 'servicePort' : servicePort,
-                'netns' : netns,
+                'netns' : json.dumps(netns),
                 'privateIp' : privateIp+'/24'
 
             }
@@ -435,6 +474,7 @@ class NetnsExController(ControllerBase):
             'containerPortMapping' : {},
             'hosts' : [],
             'containers' : [],
+            'hostContainerMapping' : {},
             'initHostId' : netns_raw['initHostId'],
         }
 
