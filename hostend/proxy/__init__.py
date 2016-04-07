@@ -62,8 +62,8 @@ class DockerProxy(Proxy) :
             self.client.start(container=container.get('Id'))
             containerInfo = self.client.inspect_container(container.get('Id'))
             pid = containerInfo['State']['Pid']
+            self._link_netns_to_directory(pid)
             if hostConfig['NetworkMode'] == 'none' :
-                self._link_netns_to_directory(pid)
                 bridge = 'docker0'
                 if self.host.switchInterface :
                     bridge = self.host.getSwitchName()
