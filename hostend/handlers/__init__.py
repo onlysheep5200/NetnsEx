@@ -15,7 +15,6 @@ class CreateContainerHandler(RequestHandler):
     def post(self):
         ip = self.get_argument('ip')
         netns = self.get_argument('netns',default=None)
-	print netns
         if netns and netns != 'null':
             netns = NetworkNamespace.parseJson(netns)
         image = self.get_argument('image',default='ubuntu')

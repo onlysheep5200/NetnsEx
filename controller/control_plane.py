@@ -401,7 +401,7 @@ class NetnsExController(ControllerBase):
                     netns['creatorId'] = newContainer['id']
                     self.persistent.update('netns',{'_id':netns['_id']},netns)
             if newContainer['hostId'] not in netns['hostContainerMapping'] :
-                netns['hostContainerMapping'][newContainer['hostId']] = newContainer['id']
+                netns['hostContainerMapping'][newContainer['hostId']] = newContainer['_id']
                 self.persistent.update('netns',{'_id':netns['_id']},netns)
 
             if 'servicePort' in newContainer :
