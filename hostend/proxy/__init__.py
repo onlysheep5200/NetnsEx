@@ -11,6 +11,7 @@ import os.path
 from lib.container import *
 import re
 from hostend.controller import *
+import traceback
 class Proxy(object):
     """容器创建代理"""
     __metaclass__ = ABCMeta
@@ -46,12 +47,14 @@ class DockerProxy(Proxy) :
         :return:
         '''
         container = {}
+        print bindNetns
         if not privateIp :
             privateIp = ip.split('/')[0]
         try :
             hostConfig = kwargs.get('host_config') if isinstance(kwargs.get('host_config'),dict) else self.client.create_host_config()
             if bindNetns and isinstance(bindNetns,NetworkNamespace) and bindNetns.initHostId == self.host.uuid:
-                hostConfig['NetworkMode'] = 'container:%s'%bindNetns.creatorId
+                tid = bindNetns.hostContainerMapping[self.host.uuid]
+                hostConfig['NetworkMode'] = 'container:%s'%tid
             else :
                 hostConfig['NetworkMode'] = 'none'
             kwargs['host_config'] = hostConfig
@@ -85,7 +88,6 @@ class DockerProxy(Proxy) :
             if containerId :
                 self.client.stop(container['Id'])
                 self.client.remove_container(container['Id'])
-
             raise e
 
     def _link_netns_to_directory(self,pid):
@@ -104,11 +106,13 @@ class DockerProxy(Proxy) :
         commonds = self._get_network_cmds(pid,ip,bridge,veth,peer)
         #添加反向接口
         if privateIp :
-            back_veth = 'back_'+veth
-            back_peer = 'back_'+peer
-            commonds.extend(self._get_back_network_cmds(pid,privateIp,bridge,back_veth,back_peer))
+            back_veth = 'b'+veth
+            back_peer = 'b'+peer
+            bcmds = self._get_back_network_cmds(pid,privateIp,bridge,back_veth,back_peer)
+            commonds.extend(bcmds)
 
         for cmd in commonds :
+            print cmd
             command_exec(cmd)
 
     def _get_network_cmds(self,pid,ip,bridge,veth,peer):
@@ -157,7 +161,6 @@ class DockerProxy(Proxy) :
         p = subprocess.Popen(shlex.split('ip netns exec %d ifconfig eth0'%containerInfo['State']['Pid']),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         if p.wait() == 0 :
             s = p.stdout.read()
-            print s
             m = re.match(r'.* HWaddr (?P<mac>\S*).*',s)
             container.mac = m.groupdict().get('mac') if m else None
         else : 

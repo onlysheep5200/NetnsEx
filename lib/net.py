@@ -22,6 +22,7 @@ class NetworkNamespace(object) :
     belongsTo = None
     createTime = None
     creatorId = None
+    hostContainerMapping = {}
 
     def __init__(self,hostId,address,belongsTo = None):
         self.initHostId = hostId
@@ -34,8 +35,9 @@ class NetworkNamespace(object) :
     def parseJson(cls,data):
         if not isinstance(data,dict) :
             data = json.loads(data)
-        netns = NetworkNamespace(data.get('initHostId'),data.get('ip')+'/'+data.get('port'))
+        netns = NetworkNamespace(data.get('initHostId'),data.get('ip')+'/'+data.get('cidrMask'))
         netns.uuid = data.get('_id')
+        netns.hostContainerMapping = data.get('hostContainerMapping')
         return netns
 
 
