@@ -19,6 +19,7 @@ class Container(object):
     belongsTo = None
     servicePort = -1
     privateIp=None
+    backMac = None
 
     def toJson(self):
         pass

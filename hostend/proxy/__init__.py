@@ -158,14 +158,16 @@ class DockerProxy(Proxy) :
         container.state = CONTAINER_STATE_ACTIVE
         container.switch = switch
         container.privateIp = privateIp
-        p = subprocess.Popen(shlex.split('ip netns exec %d ifconfig eth0'%containerInfo['State']['Pid']),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
-        if p.wait() == 0 :
-            s = p.stdout.read()
-            m = re.match(r'.* HWaddr (?P<mac>\S*).*',s)
-            container.mac = m.groupdict().get('mac') if m else None
-        else : 
-            print p.stdout.read()
-            print p.stderr.read()
+        # p = subprocess.Popen(shlex.split('ip netns exec %d ifconfig eth0'%containerInfo['State']['Pid']),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        # if p.wait() == 0 :
+        #     s = p.stdout.read()
+        #     m = re.match(r'.* HWaddr (?P<mac>\S*).*',s)
+        #     container.mac = m.groupdict().get('mac') if m else None
+        # else :
+        #     print p.stdout.read()
+        #     print p.stderr.read()
+        container.mac = self.get_mac_address(containerInfo['State']['Pid'],'eth0')
+        container.backMac = self.get_mac_address(containerInfo['State']['Pid'],'back')
         return container
 
 
@@ -176,6 +178,17 @@ class DockerProxy(Proxy) :
             bindNs = {}
         self.controller.report(Events.container_created_event(container.__dict__,bindNs))
 
+    def get_mac_address(self,pid,interface):
+        p = subprocess.Popen(shlex.split('ip netns exec %d ifconfig %s'%(pid,interface)),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        if p.wait() == 0 :
+            s = p.stdout.read()
+            m = re.match(r'.* HWaddr (?P<mac>\S*).*',s)
+            mac = m.groupdict().get('mac') if m else None
+            return mac
+        else :
+            print p.stdout.read()
+            print p.stderr.read()
+            return  None
 
 
 

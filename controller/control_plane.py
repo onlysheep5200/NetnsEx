@@ -161,7 +161,7 @@ class NetnsExtension(app_manager.RyuApp):
         dst_ip = ip_pkt.dst
         #print 'from %s:%s to %s:%s '%(ip_pkt.src,pkt.src_port,ip_pkt.dst,pkt.dst_port)
         # dst_netns = self.persistent.findOne('netns',{'ip':dst_ip}) if dst_ip != '127.0.0.1' and dst_ip != netns['ip'] else netns
-        if dst_ip == '127.0.0.1' or dst_ip == netns['ip'] :
+        if dst_ip == '127.0.0.1' or dst_ip == netns['ip'] or dst_ip == send_container['privateIp']:
             dst_netns = netns
         else :
             dst_netns = self.persistent.findOne('netns',{'ip':dst_ip})
@@ -209,14 +209,14 @@ class NetnsExtension(app_manager.RyuApp):
              actions = []
              if dst_ip == '127.0.0.1' :
                  #发出包
-                 actions.append(parser.OFPActionSetField(ipv4_dst=dst_netns['ip']))
+                 actions.append(parser.OFPActionSetField(ipv4_dst=send_container['privateIp']))
                  actions.append(parser.OFPActionSetField(ipv4_src='127.0.0.1'))
-                 actions.append(parser.OFPActionOutput(in_port))
+                 actions.append(parser.OFPActionOutput(send_container['backPortId']))
                  match = parser.OFPMatch(eth_type=0x800,ip_proto=6,in_port=in_port,tcp_dst=dst_port,ipv4_dst=dst_ip,ipv4_src = src_ip)
                  self.add_flow(datapath,1,match,actions)
 
                  #返回包
-                 backMatch = parser.OFPMatch(eth_type=0x800,ip_proto=6,in_port=in_port,tcp_dst=src_port,ipv4_dst='127.0.0.1',ipv4_src=dst_netns['ip'])
+                 backMatch = parser.OFPMatch(eth_type=0x800,ip_proto=6,in_port=send_container['backPortId'],tcp_dst=src_port,ipv4_dst='127.0.0.1',ipv4_src=dst_netns['ip'])
                  actions = [
                      parser.OFPActionSetField(ipv4_dst = dst_netns['ip']),
                      parser.OFPActionSetField(ipv4_src='127.0.0.1'),
@@ -318,6 +318,10 @@ class NetnsExtension(app_manager.RyuApp):
             container['dpId'] = datapath.id
             #保存最新的容器信息
             self.persistent.update('container',{'_id':container['_id']},container)
+        else :
+            container = self.persistent.findOne('container',{'backMac':mac})
+            if container :
+                container['backPortId'] = in_port
 
         return container
 
@@ -403,6 +407,11 @@ class NetnsExController(ControllerBase):
             if newContainer['hostId'] not in netns['hostContainerMapping'] :
                 netns['hostContainerMapping'][newContainer['hostId']] = newContainer['_id']
                 self.persistent.update('netns',{'_id':netns['_id']},netns)
+            else :
+                #如果相应主机已经存在该netns，则将初始netns的privateIp赋予新的container实例，以作为返回接口的IP
+                initContainer = self.persistent.findOne('container',{'_id':netns['hostContainerMapping'][newContainer['hostId']]})
+                newContainer['privateIp'] = initContainer['privateIp']
+                self.persistent.update('container',{'_id':newContainer['_id']},newContainer)
 
             if 'servicePort' in newContainer :
                 port = newContainer['servicePort']
@@ -470,6 +479,7 @@ class NetnsExController(ControllerBase):
         return {
             'portId' : '',
             'mac' : container_raw['mac'],
+            'backMac' : container_raw['backMac'],
             'hostId' : container_raw['hostId'],
             'dpId' : '',
             'netnsId' : container_raw['netnsId'],
