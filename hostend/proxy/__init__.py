@@ -106,11 +106,13 @@ class DockerProxy(Proxy) :
         commonds = self._get_network_cmds(pid,ip,bridge,veth,peer)
         #添加反向接口
         if privateIp :
-            back_veth = 'back_'+veth
-            back_peer = 'back_'+peer
-            commonds.extend(self._get_back_network_cmds(pid,privateIp,bridge,back_veth,back_peer))
+            back_veth = 'b'+veth
+            back_peer = 'b'+peer
+            bcmds = self._get_back_network_cmds(pid,privateIp,bridge,back_veth,back_peer)
+            commonds.extend(bcmds)
 
         for cmd in commonds :
+            print cmd
             command_exec(cmd)
 
     def _get_network_cmds(self,pid,ip,bridge,veth,peer):
@@ -159,7 +161,6 @@ class DockerProxy(Proxy) :
         p = subprocess.Popen(shlex.split('ip netns exec %d ifconfig eth0'%containerInfo['State']['Pid']),stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
         if p.wait() == 0 :
             s = p.stdout.read()
-            print s
             m = re.match(r'.* HWaddr (?P<mac>\S*).*',s)
             container.mac = m.groupdict().get('mac') if m else None
         else : 
