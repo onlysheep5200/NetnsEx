@@ -22,7 +22,7 @@ class CreateContainerHandler(RequestHandler):
         serialId = self.get_argument('serialId')
         servicePort = self.get_argument('servicePort')
         privateIp = self.get_argument('privateIp')
-        container,netns = self.application.containerProxy.create_container(ip,netns,privateIp=privateIp,image=image,command='/bin/sh',stdin_open=True,tty=True,detach=True)
+        container,netns = self.application.containerProxy.create_container(ip,netns,privateIp,image=image,command='/bin/sh',stdin_open=True,tty=True,detach=True)
         ns = copy.deepcopy(netns.__dict__)
         container = copy.deepcopy(container.__dict__)
         container['servicePort'] = servicePort

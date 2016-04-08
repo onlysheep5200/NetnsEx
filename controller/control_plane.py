@@ -10,6 +10,7 @@ from ryu.lib.packet import packet
 from ryu.lib.packet import ethernet,ipv4,icmp,arp,tcp,udp
 from ryu.lib.packet import ether_types
 from ryu.app.wsgi import ControllerBase, WSGIApplication, route
+from ryu.utils import hex_array
 from ryu.lib import dpid as dpid_lib
 from ryu.lib.ovs.bridge import OVSBridge,CONF
 from webob import Response
@@ -76,6 +77,10 @@ class NetnsExtension(app_manager.RyuApp):
                                     match=match, instructions=inst)
         datapath.send_msg(mod)
 
+    @set_ev_cls(ofp_event.EventOFPErrorMsg,MAIN_DISPATCHER)
+    def _error_handler(self,ev):
+        msg = ev.msg
+        print 'type=0x%02x code=0x%02x msg : %s'%(msg.type,msg.code,hex_array(msg.data))
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
@@ -121,17 +126,22 @@ class NetnsExtension(app_manager.RyuApp):
             self.logger.info('No Networknamespace exists !')
             return
 
+        #arp协议
         if arp_pkt :
             arp_pkt = arp_pkt[0]
             self._operate_with_arp(msg,datapath,arp_pkt,sendContainer,netns,eth)
-
-        elif icmp_pkt :
+        #IP协议-
+        if icmp_pkt :
             print 'icmp packet coming'
             icmp_pkt = icmp_pkt[0]
             self._operate_with_icmp(msg,datapath,icmp_pkt,sendContainer,netns,eth)
 
         elif tcp_pkt or udp_pkt :
-            self._operate_with_transport_layer(msg,datapath,tcp_pkt[0] if tcp_pkt else udp_pkt[0],ip[0],sendContainer,netns,eth)
+            if tcp_pkt :
+                protocol = 'tcp'
+            else :
+                protocol = 'udp'
+            self._operate_with_transport_layer(msg,datapath,tcp_pkt[0] if tcp_pkt else udp_pkt[0],ip[0],sendContainer,netns,eth,protocol)
 
         elif ip :
             print 'ip packet comming'
@@ -145,9 +155,11 @@ class NetnsExtension(app_manager.RyuApp):
     def _operate_with_ip(self,msg,datapath,ip_pkt,send_container,netns,eth):
         pass
 
-    def _operate_with_transport_layer(self,msg,datapath,pkt,ip_pkt,send_container,netns,eth):
+    def _operate_with_transport_layer(self,msg,datapath,pkt,ip_pkt,send_container,netns,eth,protocol='tcp'):
+        print 'protocol is %s'%protocol
         dst_port = pkt.dst_port
         dst_ip = ip_pkt.dst
+        #print 'from %s:%s to %s:%s '%(ip_pkt.src,pkt.src_port,ip_pkt.dst,pkt.dst_port)
         # dst_netns = self.persistent.findOne('netns',{'ip':dst_ip}) if dst_ip != '127.0.0.1' and dst_ip != netns['ip'] else netns
         if dst_ip == '127.0.0.1' or dst_ip == netns['ip'] :
             dst_netns = netns
@@ -186,7 +198,9 @@ class NetnsExtension(app_manager.RyuApp):
 
 
     def _transport_in_netns(self,msg,datapath,pkt,src_ip,dst_ip,dst_port,send_container,target_container,dst_netns):
-         target_port = target_container['portId']
+         #target_port = target_container['portId']
+         print 'from %s:%s to %s:%s '%(src_ip,pkt.src_port,dst_ip,pkt.dst_port)
+         in_port = msg.match['in_port']
          parser = datapath.ofproto_parser
          src_port = pkt.src_port
          #当源与目标在同一个主机上时
@@ -197,24 +211,25 @@ class NetnsExtension(app_manager.RyuApp):
                  #发出包
                  actions.append(parser.OFPActionSetField(ipv4_dst=dst_netns['ip']))
                  actions.append(parser.OFPActionSetField(ipv4_src='127.0.0.1'))
-                 actions.append(parser.OFPActionOutput(msg.match['in_port']))
-                 match = parser.OFPMatch(tcp_dst=dst_port,ipv4_dst=dst_ip,ipv4_src = src_ip)
-                 self.add_flow(datapath,12345,match,actions)
+                 actions.append(parser.OFPActionOutput(in_port))
+                 match = parser.OFPMatch(eth_type=0x800,ip_proto=6,in_port=in_port,tcp_dst=dst_port,ipv4_dst=dst_ip,ipv4_src = src_ip)
+                 self.add_flow(datapath,1,match,actions)
 
                  #返回包
-                 backMatch = parser.OFPMatch(tcp_dst=src_port,ipv4_dst='127.0.0.1',ipv4_src=dst_netns['ip'])
+                 backMatch = parser.OFPMatch(eth_type=0x800,ip_proto=6,in_port=in_port,tcp_dst=src_port,ipv4_dst='127.0.0.1',ipv4_src=dst_netns['ip'])
                  actions = [
                      parser.OFPActionSetField(ipv4_dst = dst_netns['ip']),
                      parser.OFPActionSetField(ipv4_src='127.0.0.1'),
-                     parser.OFPActionOutput(msg.match['in_port'])
+                     parser.OFPActionOutput(in_port)
                  ]
-                 self.add_flow(datapath,12345,backMatch,actions)
+                 self.add_flow(datapath,1,backMatch,actions)
 
                  data = None
                  if msg.buffer_id == datapath.ofproto.OFP_NO_BUFFER :
                      data = msg.data
-                 out = parser.OFPPacketOut(datapath=datapath,buffer_id=msg.buffer_id,in_port = msg.match['in_port'],actions=actions,data = data)
-                 datapath.send_msg(out)
+                 # out = parser.OFPPacketOut(datapath=datapath,buffer_id=msg.buffer_id,in_port = msg.match['in_port'],actions=actions,data = data)
+                 # datapath.send_msg(out)
+                 print 'no out , just wait for next packet !'
              else :
                  pass
          else :
@@ -255,8 +270,8 @@ class NetnsExtension(app_manager.RyuApp):
                 dst_netns = self.persistent.findOne('netns',{'_id':send_container['netnsId']})
             else :
                 dst_netns = self.persistent.findOne('netns',{'ip':dst_ip})
-            print dst_netns
-            print self.persistent.persistent
+            # print dst_netns
+            # print self.persistent.persistent
 
             if dst_netns :
                 print 'netns id is %s'%dst_netns['_id']
@@ -438,7 +453,6 @@ class NetnsExController(ControllerBase):
                 'servicePort' : servicePort,
                 'netns' : json.dumps(netns),
                 'privateIp' : privateIp+'/24'
-
             }
             r = requests.post(url,data=data)
             return r.json()

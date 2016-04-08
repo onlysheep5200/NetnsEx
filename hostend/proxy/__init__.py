@@ -68,7 +68,7 @@ class DockerProxy(Proxy) :
                 self._add_veth_to_netns(pid,bridge)
                 if not bindNetns :
                     bindNetns = self._create_netns(container,ip)
-                self._add_veth_to_netns(pid,ip,bridge)
+                self._add_veth_to_netns(pid,ip,bridge,privateIp)
 
 
             container = self._create_container_instance(containerInfo,self.host.switchInterface,bindNetns,privateIp=privateIp)
@@ -98,19 +98,40 @@ class DockerProxy(Proxy) :
     def _add_veth_to_netns(self,pid,ip,bridge='docker0',privateIp=None):
         if not ip :
             raise MissArgumentException('ip')
+        #添加正向接口
         veth = 'veth_%d'%pid
         peer = 'veth_%dc'%pid
-        commonds = [ 'ip link add %s type veth peer name %s'%(veth,peer),
+        commonds = self._get_network_cmds(pid,ip,bridge,veth,peer)
+        #添加反向接口
+        if privateIp :
+            back_veth = 'back_'+veth
+            back_peer = 'back_'+peer
+            commonds.extend(self._get_back_network_cmds(pid,privateIp,bridge,back_veth,back_peer))
+
+        for cmd in commonds :
+            command_exec(cmd)
+
+    def _get_network_cmds(self,pid,ip,bridge,veth,peer):
+        commands = [ 'ip link add %s type veth peer name %s'%(veth,peer),
                     'ovs-vsctl add-port %s %s'%(bridge,veth),
                     'ip link set %s netns %d'%(peer,pid),
                     'ip netns exec %d ip link set dev %s name eth0'%(pid,peer),
-                    'ip netns exec %d ip addr add %s dev eth0'%(pid,ip if not privateIp else privateIp),
+                    'ip netns exec %d ip addr add %s dev eth0'%(pid,ip),
                     'ip netns exec %d ip link set eth0 up'%(pid),
                     'ip netns exec %d ip addr del 127.0.0.1/8 dev lo'%(pid),
                     'ip netns exec %d ip route add default dev eth0'%(pid),
                     'ip link set %s up'%veth]
-        for cmd in commonds :
-            command_exec(cmd)
+        return commands
+
+    def _get_back_network_cmds(self,pid,ip,bridge,veth,peer):
+        commands = [ 'ip link add %s type veth peer name %s'%(veth,peer),
+                    'ovs-vsctl add-port %s %s'%(bridge,veth),
+                    'ip link set %s netns %d'%(peer,pid),
+                    'ip netns exec %d ip link set dev %s name back'%(pid,peer),
+                    'ip netns exec %d ip addr add %s dev back'%(pid,ip),
+                    'ip netns exec %d ip link set back up'%(pid),
+                    'ip link set %s up'%veth]
+        return commands
 
 
 
