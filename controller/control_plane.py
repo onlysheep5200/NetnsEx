@@ -114,6 +114,9 @@ class NetnsExtension(app_manager.RyuApp):
         dst = eth.dst
         src = eth.src
 
+        print src
+        print dst
+
 
 
         #取得发包容器所属的netns
@@ -134,7 +137,7 @@ class NetnsExtension(app_manager.RyuApp):
         if icmp_pkt :
             print 'icmp packet coming'
             icmp_pkt = icmp_pkt[0]
-            self._operate_with_icmp(msg,datapath,icmp_pkt,sendContainer,netns,eth)
+            self._operate_with_icmp(msg,datapath,ip[0],icmp_pkt,sendContainer,netns,eth)
 
         elif tcp_pkt or udp_pkt :
             if tcp_pkt :
@@ -149,14 +152,45 @@ class NetnsExtension(app_manager.RyuApp):
             self._operate_with_ip(in_port,datapath,ip,sendContainer,netns,eth)
 
 
-    def _operate_with_icmp(self,msg,datapath,icmp_pkt,send_container,netns,eth):
-        pass
+    def _operate_with_icmp(self,msg,datapath,ip_pkt,icmp_pkt,send_container,netns,eth):
+        src = ip_pkt.src
+        dst = ip_pkt.dst
+        if 'backPortId' not in send_container :
+            return
+        parser = datapath.ofproto_parser
+        if dst == '127.0.0.1' :
+            actions = []
+            actions.append(parser.OFPActionSetField(ipv4_dst=send_container['private_ip']))
+            actions.append(parser.OFPActionSetField(eth_dst=send_container['backMac']))
+            actions.append(parser.OFPActionOutput(send_container['backPortId']))
+            match = parser.OFPMatch(eth_type=0x800,in_port=msg.match['in_port'],ipv4_dst=dst,ipv4_src = src)
+            self.add_flow(datapath,1,match,actions)
+
+            actions = [
+                parser.OFPActionSetField(ipv4_src='127.0.0.1'),
+                parser.OFPActionSetField(ipv4_dst=src),
+                parser.OFPActionSetField(eth_src = eth.dst),
+                parser.OFPActionOutput(send_container['portId'])
+            ]
+            match = parser.OFPMatch(eth_type=0x800,in_port=send_container['backPortId'],ipv4_dst=src)
+            self.add_flow(datapath,1,match,actions)
+        elif dst == send_container['private_ip'] and src == netns['ip']:
+            print 'to self private IP addr '
+            self.add_flow(datapath,1,parser.OFPMatch(eth_type=0x800,in_port=send_container['backPortId'],ipv4_dst=src,ipv4_src=dst),
+                [
+                    parser.OFPActionOutput(send_container['portId'])
+                ]
+            )
+            out = parser.OFPPacketOut(datapath=datapath,buffer_id=msg.buffer_id,in_port=msg.match['in_port'],actions = [
+                    parser.OFPActionOutput(send_container['backPortId'])
+                ], data = msg.data if msg.buffer_id==datapath.ofproto.OFP_NO_BUFFER else None)
+            datapath.send_msg(out)
 
     def _operate_with_ip(self,msg,datapath,ip_pkt,send_container,netns,eth):
         pass
 
     def _operate_with_transport_layer(self,msg,datapath,pkt,ip_pkt,send_container,netns,eth,protocol='tcp'):
-        print 'protocol is %s'%protocol
+        print 'protocol is %s , src mac is %s , dst mac is %s'%(protocol,eth.src,eth.dst)
         dst_port = pkt.dst_port
         dst_ip = ip_pkt.dst
         #print 'from %s:%s to %s:%s '%(ip_pkt.src,pkt.src_port,ip_pkt.dst,pkt.dst_port)
@@ -209,20 +243,43 @@ class NetnsExtension(app_manager.RyuApp):
              actions = []
              if dst_ip == '127.0.0.1' :
                  #发出包
-                 actions.append(parser.OFPActionSetField(ipv4_dst=send_container['privateIp']))
-                 actions.append(parser.OFPActionSetField(ipv4_src='127.0.0.1'))
-                 actions.append(parser.OFPActionOutput(send_container['backPortId']))
+                 actions.append(parser.OFPActionSetField(ipv4_dst=target_container['private_ip']))
+                 actions.append(parser.OFPActionSetField(eth_dst=target_container['mac']))
+                 actions.append(parser.OFPActionOutput(target_container['portId']))
                  match = parser.OFPMatch(eth_type=0x800,ip_proto=6,in_port=in_port,tcp_dst=dst_port,ipv4_dst=dst_ip,ipv4_src = src_ip)
                  self.add_flow(datapath,1,match,actions)
+                 #TODO : 清除tcp src_port为当前src_port的流表项
+
+                 match = parser.OFPMatch(eth_type = 0x800,ip_proto=6,in_port=target_container['portId'],tcp_port=src_port,ipv4_src = target_container['privateIp'],ipv4_dst=send_container['privateIp'])
+                 actions.append(parser.OFPActionSetField(ipv4_src='127.0.0.1'))
+                 actions.append(parser.OFPActionSetField(eth_src='12:34:56:78:90:21'))
+                 actions.append(parser.OFPActionOutput(send_container['portId']))
+                 self.add_flow(datapath,1,match,actions)
+                 # rawPacket = packet.Packet(msg.data)
+                 # newPacket = packet.Packet()
+                 # newPacket.add_protocol(rawPacket.get_protocols(ethernet.ethernet)[0])
+                 # ip_pkt = rawPacket.get_protocols(ipv4.ipv4)[0]
+                 # ip_pkt.dst = target_container['private_ip']
+                 # eth_pkt = rawPacket.get_protocols(ethernet.ethernet)[0]
+                 # eth_pkt.dst = target_container['mac']
+                 # newPacket.add_protocol(eth_pkt)
+                 # newPacket.add_protocol(ip_pkt)
+                 # newPacket.add_protocol(pkt)
+                 # newPacket.serialize()
+                 out = parser.OFPPacketOut(datapath=datapath,buffer_id = msg.buffer_id,in_port=msg.match['in_port'],actions=actions,data = msg.data)
+                 datapath.send_msg(out)
+
+
+
 
                  #返回包
-                 backMatch = parser.OFPMatch(eth_type=0x800,ip_proto=6,in_port=send_container['backPortId'],tcp_dst=src_port,ipv4_dst='127.0.0.1',ipv4_src=dst_netns['ip'])
-                 actions = [
-                     parser.OFPActionSetField(ipv4_dst = dst_netns['ip']),
-                     parser.OFPActionSetField(ipv4_src='127.0.0.1'),
-                     parser.OFPActionOutput(in_port)
-                 ]
-                 self.add_flow(datapath,1,backMatch,actions)
+                 # backMatch = parser.OFPMatch(eth_type=0x800,ip_proto=6,tcp_src=dst_port,ipv4_dst='127.0.0.1',ipv4_src=send_container['private_ip'])
+                 # actions = [
+                 #     parser.OFPActionSetField(ipv4_dst = dst_netns['ip']),
+                 #     parser.OFPActionSetField(ipv4_src='127.0.0.1'),
+                 #     parser.OFPActionOutput(in_port)
+                 # ]
+                 # self.add_flow(datapath,1,backMatch,actions)
 
                  data = None
                  if msg.buffer_id == datapath.ofproto.OFP_NO_BUFFER :
@@ -266,21 +323,22 @@ class NetnsExtension(app_manager.RyuApp):
             dst_ip = arp_pkt.dst_ip
             self.logger.info('dst ip is : %s'%dst_ip)
             #判断是否是本地IP
-            if dst_ip == '127.0.0.1' :
+            if dst_ip == '127.0.0.1' or dst_ip == send_container['private_ip']:
                 dst_netns = self.persistent.findOne('netns',{'_id':send_container['netnsId']})
             else :
                 dst_netns = self.persistent.findOne('netns',{'ip':dst_ip})
             # print dst_netns
             # print self.persistent.persistent
 
-            if dst_netns :
+            if dst_ip == '127.0.0.1' :
                 print 'netns id is %s'%dst_netns['_id']
-                containerWithNetns = self.persistent.findOne('container',{'netnsId':dst_netns['_id']})
+                #containerWithNetns = self.persistent.findOne('container',{'netnsId':dst_netns['_id']})
                 reply = packet.Packet()
-                reply.add_protocol(ethernet.ethernet(ethertype=eth.ethertype,dst=eth.src,src=containerWithNetns['mac']))
+                reply.add_protocol(ethernet.ethernet(ethertype=eth.ethertype,dst=eth.src,src='12:34:56:78:90:21'))
                 reply.add_protocol(arp.arp(
                     opcode=arp.ARP_REPLY,
-                    src_mac=containerWithNetns['mac'],
+                    #src_mac=containerWithNetns['mac'],
+                    src_mac='12:34:56:78:90:21',
                     src_ip=arp_pkt.dst_ip,
                     dst_mac=eth.src,
                     dst_ip = arp_pkt.src_ip
@@ -405,13 +463,15 @@ class NetnsExController(ControllerBase):
                     netns['creatorId'] = newContainer['id']
                     self.persistent.update('netns',{'_id':netns['_id']},netns)
             if newContainer['hostId'] not in netns['hostContainerMapping'] :
-                netns['hostContainerMapping'][newContainer['hostId']] = newContainer['_id']
+                netns['hostContainerMapping'][newContainer['hostId']] = [newContainer['_id']]
                 self.persistent.update('netns',{'_id':netns['_id']},netns)
             else :
                 #如果相应主机已经存在该netns，则将初始netns的privateIp赋予新的container实例，以作为返回接口的IP
-                initContainer = self.persistent.findOne('container',{'_id':netns['hostContainerMapping'][newContainer['hostId']]})
-                newContainer['privateIp'] = initContainer['privateIp']
-                self.persistent.update('container',{'_id':newContainer['_id']},newContainer)
+                # initContainer = self.persistent.findOne('container',{'_id':netns['hostContainerMapping'][newContainer['hostId']]})
+                # newContainer['privateIp'] = initContainer['privateIp']
+                # self.persistent.update('container',{'_id':newContainer['_id']},newContainer)
+                netns['hostContainerMapping'][newContainer['hostId']].append(newContainer['_id'])
+                self.persistent.update('netns',{'_id':netns['_id']},netns)
 
             if 'servicePort' in newContainer :
                 port = newContainer['servicePort']
@@ -479,7 +539,7 @@ class NetnsExController(ControllerBase):
         return {
             'portId' : '',
             'mac' : container_raw['mac'],
-            'backMac' : container_raw['backMac'],
+            'backMac' : container_raw.get('backMac'),
             'hostId' : container_raw['hostId'],
             'dpId' : '',
             'netnsId' : container_raw['netnsId'],
