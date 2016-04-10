@@ -52,11 +52,13 @@ class DockerProxy(Proxy) :
             privateIp = ip.split('/')[0]
         try :
             hostConfig = kwargs.get('host_config') if isinstance(kwargs.get('host_config'),dict) else self.client.create_host_config()
-            if bindNetns and isinstance(bindNetns,NetworkNamespace) and bindNetns.initHostId == self.host.uuid:
+            #if bindNetns and isinstance(bindNetns,NetworkNamespace) and bindNetns.initHostId == self.host.uuid:
+            if False : 
                 tid = bindNetns.hostContainerMapping[self.host.uuid]
                 hostConfig['NetworkMode'] = 'container:%s'%tid
             else :
                 hostConfig['NetworkMode'] = 'none'
+            #hostConfig['privileged'] = True
             kwargs['host_config'] = hostConfig
             container = self.client.create_container(*args,**kwargs)
             self.client.start(container=container.get('Id'))
@@ -71,7 +73,7 @@ class DockerProxy(Proxy) :
                 self._add_veth_to_netns(pid,bridge)
                 if not bindNetns :
                     bindNetns = self._create_netns(container,ip)
-                self._add_veth_to_netns(pid,ip,bridge,privateIp)
+                self._add_veth_to_netns(pid,privateIp,bridge,privateIp)
 
 
             container = self._create_container_instance(containerInfo,self.host.switchInterface,bindNetns,privateIp=privateIp)
@@ -105,11 +107,11 @@ class DockerProxy(Proxy) :
         peer = 'veth_%dc'%pid
         commonds = self._get_network_cmds(pid,ip,bridge,veth,peer)
         #添加反向接口
-        if privateIp :
-            back_veth = 'b'+veth
-            back_peer = 'b'+peer
-            bcmds = self._get_back_network_cmds(pid,privateIp,bridge,back_veth,back_peer)
-            commonds.extend(bcmds)
+        #if privateIp :
+            #back_veth = 'b'+veth
+            #back_peer = 'b'+peer
+            #bcmds = self._get_back_network_cmds(pid,privateIp,bridge,back_veth,back_peer)
+            #commonds.extend(bcmds)
 
         for cmd in commonds :
             print cmd
@@ -167,7 +169,7 @@ class DockerProxy(Proxy) :
         #     print p.stdout.read()
         #     print p.stderr.read()
         container.mac = self.get_mac_address(containerInfo['State']['Pid'],'eth0')
-        container.backMac = self.get_mac_address(containerInfo['State']['Pid'],'back')
+        #container.backMac = self.get_mac_address(containerInfo['State']['Pid'],'back')
         return container
 
 
