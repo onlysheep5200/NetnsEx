@@ -34,7 +34,7 @@ class BootSelfHandler(RequestHandler):
     @gen.coroutine
     def get(self):
         pid = self.get_argument('pid')
-        cmd = 'ip netns exec %s ping -c 1 localhost'%pid
+        cmd = 'ip netns exec %s ping -c 1 12.34.56.7'%pid
         self.application.executionPool.submit(command_exec,cmd)
         self.write(dict(state='success'))
 

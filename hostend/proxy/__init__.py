@@ -58,6 +58,7 @@ class DockerProxy(Proxy) :
                 hostConfig['NetworkMode'] = 'container:%s'%tid
             else :
                 hostConfig['NetworkMode'] = 'none'
+            #hostConfig['privileged'] = True
             kwargs['host_config'] = hostConfig
             container = self.client.create_container(*args,**kwargs)
             self.client.start(container=container.get('Id'))
@@ -68,8 +69,7 @@ class DockerProxy(Proxy) :
                 bridge = 'docker0'
                 if self.host.switchInterface :
                     bridge = self.host.getSwitchName()
-
-                self._add_veth_to_netns(pid,bridge)
+                #self._add_veth_to_netns(pid,bridge)
                 if not bindNetns :
                     bindNetns = self._create_netns(container,ip)
                 self._add_veth_to_netns(pid,privateIp,bridge,privateIp)
@@ -123,8 +123,10 @@ class DockerProxy(Proxy) :
                     'ip netns exec %d ip link set dev %s name eth0'%(pid,peer),
                     'ip netns exec %d ip addr add %s dev eth0'%(pid,ip),
                     'ip netns exec %d ip link set eth0 up'%(pid),
+                    'ip netns exec %d ifconfig eth0 promisc'%(pid),
                     'ip netns exec %d ip addr del 127.0.0.1/8 dev lo'%(pid),
                     'ip netns exec %d ip route add default dev eth0'%(pid),
+                    'ip netns exec %d sysctl -w net.ipv4.conf.eth0.route_localnet=1'%(pid),
                     'ip link set %s up'%veth]
         return commands
 
@@ -168,7 +170,7 @@ class DockerProxy(Proxy) :
         #     print p.stdout.read()
         #     print p.stderr.read()
         container.mac = self.get_mac_address(containerInfo['State']['Pid'],'eth0')
-        container.backMac = self.get_mac_address(containerInfo['State']['Pid'],'back')
+        #container.backMac = self.get_mac_address(containerInfo['State']['Pid'],'back')
         return container
 
 
