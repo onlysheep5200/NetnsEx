@@ -140,11 +140,6 @@ class DockerProxy(Proxy) :
                     'ip link set %s up'%veth]
         return commands
 
-
-
-
-
-
     def _create_netns(self,container,ip):
         netns = NetworkNamespace(str(self.host.uuid),ip)
         return netns

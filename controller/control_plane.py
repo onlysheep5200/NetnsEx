@@ -25,6 +25,8 @@ instance_name = 'netns_api_app'
 url = '/netnsex'
 conf = json.load(open('config.json','r'))
 
+MAGIC_MAC_ADDR = 'ac:87:a3:1f:36:e7'
+
 class NetnsExtension(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
 
@@ -38,7 +40,7 @@ class NetnsExtension(app_manager.RyuApp):
         self.datapaths = {}
         wsgi = kwargs['wsgi']
         wsgi.register(NetnsExController, {instance_name : self,'persistent':self.persistent})
-        self.tunnels = {}
+        self.bridges = {}
         self.containerFlows = {}
 
 
@@ -51,11 +53,9 @@ class NetnsExtension(app_manager.RyuApp):
         self.datapaths[datapath.id] = {'datapath':datapath}
         self.mapping_datapath_with_host(datapath=datapath)
         addr = 'tcp:%s:6632'%datapath.address[0]
-        # bridge = OVSBridge(CONF,datapath.id,addr)
-        # bridge.init()
-        # print bridge.db_get_val('Interface','vxlan1','type')
-
-
+        bridge = OVSBridge(CONF,datapath.id,addr)
+        bridge.init()
+        self.bridges[addr] = bridge
 
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
@@ -129,6 +129,11 @@ class NetnsExtension(app_manager.RyuApp):
             self.logger.info('No Networknamespace exists !')
             return
 
+        #解决隧道包
+        if in_port in sendContainer['targetPorts'] or sendContainer['portNameList'].index(in_port-1) in sendContainer['targetPorts'] :
+            self._operate_with_tunnel(msg,datapath,eth,ip,tcp_pkt,sendContainer,netns)
+            return
+
         #arp协议
         if arp_pkt :
             arp_pkt = arp_pkt[0]
@@ -151,6 +156,9 @@ class NetnsExtension(app_manager.RyuApp):
             ip = ip[0]
             self._operate_with_ip(in_port,datapath,ip,sendContainer,netns,eth)
 
+
+    def _operate_with_tunnel(self,msg,datapath,eth_pkt,ip_pkt,tsl_pkt,sender_container,netns):
+        print 'pkt from tunnel !!'
 
     def _operate_with_icmp(self,msg,datapath,ip_pkt,icmp_pkt,send_container,netns,eth):
         src = ip_pkt.src
@@ -236,8 +244,6 @@ class NetnsExtension(app_manager.RyuApp):
             # datapath.send_msg(out)
             # self.add_flow(datapath,12345,match,actions)
 
-
-
     def _transport_in_netns(self,msg,datapath,pkt,src_ip,dst_ip,dst_port,send_container,target_container,dst_netns):
          #target_port = target_container['portId']
          print 'from %s:%s to %s:%s '%(src_ip,pkt.src_port,dst_ip,pkt.dst_port)
@@ -256,30 +262,14 @@ class NetnsExtension(app_manager.RyuApp):
                  match = parser.OFPMatch(eth_type=0x800,ip_proto=6,in_port=in_port,tcp_dst=dst_port,ipv4_dst=dst_ip,ipv4_src = src_ip)
                  self.add_flow(datapath,1,match,actions)
                  #TODO : 清除tcp src_port为当前src_port的流表项
-
                  match = parser.OFPMatch(eth_type = 0x800,ip_proto=6,in_port=target_container['portId'],tcp_src=dst_port,ipv4_src = target_container['private_ip'],ipv4_dst=send_container['private_ip'])
                  backActions = []
                  backActions.append(parser.OFPActionSetField(eth_src='ac:87:a3:1f:36:e7'))
                  backActions.append(parser.OFPActionSetField(ipv4_src='127.0.0.1'))
                  backActions.append(parser.OFPActionOutput(send_container['portId']))
                  self.add_flow(datapath,1,match,backActions)
-                 # rawPacket = packet.Packet(msg.data)
-                 # newPacket = packet.Packet()
-                 # newPacket.add_protocol(rawPacket.get_protocols(ethernet.ethernet)[0])
-                 # ip_pkt = rawPacket.get_protocols(ipv4.ipv4)[0]
-                 # ip_pkt.dst = target_container['private_ip']
-                 # eth_pkt = rawPacket.get_protocols(ethernet.ethernet)[0]
-                 # eth_pkt.dst = target_container['mac']
-                 # newPacket.add_protocol(eth_pkt)
-                 # newPacket.add_protocol(ip_pkt)
-                 # newPacket.add_protocol(pkt)
-                 # newPacket.serialize()
                  out = parser.OFPPacketOut(datapath=datapath,buffer_id = datapath.ofproto.OFP_NO_BUFFER,in_port=msg.match['in_port'],actions=actions,data = msg.data)
                  datapath.send_msg(out)
-
-
-
-
                  #返回包
                  # backMatch = parser.OFPMatch(eth_type=0x800,ip_proto=6,tcp_src=dst_port,ipv4_dst='127.0.0.1',ipv4_src=send_container['private_ip'])
                  # actions = [
@@ -288,17 +278,37 @@ class NetnsExtension(app_manager.RyuApp):
                  #     parser.OFPActionOutput(in_port)
                  # ]
                  # self.add_flow(datapath,1,backMatch,actions)
-
-                 data = None
-                 if msg.buffer_id == datapath.ofproto.OFP_NO_BUFFER :
-                     data = msg.data
-                 # out = parser.OFPPacketOut(datapath=datapath,buffer_id=msg.buffer_id,in_port = msg.match['in_port'],actions=actions,data = data)
-                 # datapath.send_msg(out)
-                 print 'no out , just wait for next packet !'
              else :
                  pass
+
          else :
-             pass
+             #跨主机间
+             #发包
+             match = parser.OFPMatch(eth_type=0x800,ip_proto=6,tcp_dst=dst_port,ipv4_dst=dst_ip,ipv4_src = src_ip)
+             senderHost = self.persistent.findOne('host',{'_id':send_container['hostId']})
+             portId = senderHost['targetPorts'].get(target_container['hostId'])
+             if not portId :
+                 self.logger.info('no tunnel between two host !!!!!!')
+                 return
+             if not isinstance(portId,int) :
+                 portId = senderHost['portNameList'].index(portId)+1
+                 senderHost['targetPorts'][target_container['hostId']] = portId
+             actions = [
+                parser.OFPActionOutput(portId)
+             ]
+             self.add_flow(datapath,1,match,actions)
+
+             #回包
+             #对端将包的原地址改成127.0.0.1后再发
+             match = parser.OFPMatch(eth_type=0x800,ip_proto=6,tcp_dst=src_port,ipv4_dst=src_ip,ipv4_src = dst_ip)
+             backActions = [
+                 parser.OFPActionOutput(in_port)
+             ]
+             self.add_flow(datapath,1,match,backActions)
+
+             out = parser.OFPPacketOut(datapath=datapath,buffer_id = datapath.ofproto.OFP_NO_BUFFER,in_port=msg.match['in_port'],actions=actions,data = msg.data)
+             datapath.send_msg(out)
+
 
          # if dst_ip == '127.0.0.1' or dst_ip == dst_netns['ip'] :
          #    match = parser.OFPMatch(tcp_dst=dst_port,ipv4_dst=('127.0.0.1',dst_netns['ip']))
@@ -342,7 +352,7 @@ class NetnsExtension(app_manager.RyuApp):
                 #print 'netns id is %s'%dst_netns['_id']
                 #containerWithNetns = self.persistent.findOne('container',{'netnsId':dst_netns['_id']})
                 if dst_ip == '127.0.0.1' :
-                    macaddr = 'ac:87:a3:1f:36:e7'
+                    macaddr = MAGIC_MAC_ADDR
                 else :
                     targetContainer = self.persistent.findOne('container',{'private_ip':dst_ip})
                     if targetContainer :
@@ -420,12 +430,6 @@ class NetnsExtension(app_manager.RyuApp):
                     return host
         return None
 
-    def _transport_flow_to_container(self,pkt,netns):
-        pass
-
-    def _flow_back_to_inport(self,inport,pkt):
-        pass
-
 
 
 
@@ -450,6 +454,21 @@ class NetnsExController(ControllerBase):
         else :
             host = self.persistent.save('host',{'mac':hostMac,'transIp':transIp,'switchIp':switchIp,'containers':[]})
             reply['id'] = host['_id']
+
+        #TODO:增加可扩展性（该部分目前只适合存在内存中）
+        #TODO:并行连接时有bug
+        if 'bridge' not in host :
+            bridge = self.app.bridges.get('tcp:%s:6632'%switchIp)
+            print bridge
+            print switchIp
+            print self.app.bridges
+            if bridge :
+                host['bridge'] = bridge
+                print 'new created : '
+                print host
+                self.persistent.update('host',{'_id':host['_id']},host)
+            self.build_tunnel_for_new_host(host)
+
         self.app.mapping_datapath_with_host(host=host)
         return self.successReturn(reply)
 
@@ -523,6 +542,39 @@ class NetnsExController(ControllerBase):
     def failReturn(self,reason):
         return Response(content_type='application/json', body=json.dumps({'state':'failed','reason':reason}))
 
+    #TODO:并发场景不适合，改之
+    def build_tunnel_for_new_host(self,newHost):
+        hosts = self.persistent.findAll('host')
+        newHost.setdefault('targetPorts',{})
+        nBridge = newHost['bridge']
+        for h in hosts :
+            if h['_id'] == newHost['_id'] :
+                continue
+            h.setdefault('targetPorts',{})
+            oBridge = h['bridge']
+            nNum = self._get_tunnel_port_num(newHost)
+            oNum = self._get_tunnel_port_num(h)
+
+            nBridgeName = 'vxlan%d'%nNum
+            nBridge.add_tunnel_port(nBridgeName,'vxlan',newHost['switchIp'],h['switchIp'],key='flow')
+            newHost['targetPorts'][h['_id']] =nBridgeName
+
+            oBridgeName = 'vxlan%d'%oNum
+            oBridge.add_tunnel_port(oBridgeName,'vxlan',h['switchIp'],newHost['switchIp'],key='flow')
+            h['targetPorts'][newHost['_id']] = oBridgeName
+
+            h['portNameList'] = oBridge.get_port_name_list()
+            self.persistent.update('host',{'_id':h['_id']},h)
+        newHost['portNameList'] = nBridge.get_port_name_list()
+        self.persistent.update('host',{'_id':newHost['_id']},newHost)
+
+
+
+
+
+    def _get_tunnel_port_num(self,host):
+        return len(host['targetPorts'].values())
+
     def request_host_to_create_container(self,host,ip,servicePort=-1,image=None,privateIp=None):
         # host = self.persistent.findOne('host',{'_id':host})
         if 'transIp' in host :
@@ -550,7 +602,6 @@ class NetnsExController(ControllerBase):
             return
         requests.get("http://%s:%d/bootSelf"%(host['transIp'],conf['client_port']),params = {'pid':container['pid']})
 
-
     def parse_container(self,container_raw):
         return {
             'portId' : '',
@@ -576,6 +627,7 @@ class NetnsExController(ControllerBase):
             'containers' : [],
             'hostContainerMapping' : {},
             'initHostId' : netns_raw['initHostId'],
+            'flag' : 0
         }
 
     def _getBoundary(self,req):

@@ -17,7 +17,7 @@ from uuid import uuid4
             _id : persistent赋予容器的ID
             servicePort : ''
             create_time : 创建时间
-            privateIp : 每个容器所专有的私有IP，用于IP包的转发
+            private_ip : 每个容器所专有的私有IP，用于IP包的转发
 
         netns :
             ip : Namespace对应的IP地址
@@ -26,6 +26,7 @@ from uuid import uuid4
             flag : 唯一性标识，用来租户隔离，暂时使用vlanId
             hosts ： 存在该netns所属容器的主机
             containers ： 所属容器，存容器的_id字段
+            initHostId : 初始主机ID
             _id :
 
         Host :
@@ -33,8 +34,16 @@ from uuid import uuid4
             containers : 所包含的容器，记录_id
             mac : 主机的mac地址
             transIp : 发送请求的IP地址
-            switchIp : vxlan对应IP
+            switchIp : 交换机所属隧道对应的本地IP
             dpid : 主机对应的datapath id
+            bridge : 主机对应网桥
+            targetPorts : 面向其他主机的隧道端口
+                {
+                    hostId : bridge_to_the_host,
+                    ...
+                }
+            portNameList : 端口名列表
+
 
 
 '''
@@ -124,6 +133,12 @@ class TestPersistent(DataPersistent) :
         results = self.query(schema,conditions)
         if results :
             return results[0]
+        return None
+
+    def findAll(self,schema):
+        sch = self.persistent.get(schema)
+        if sch and isinstance(sch,dict):
+            return sch.values()
         return None
 
 
