@@ -2,6 +2,7 @@
 
 from SocketServer import TCPServer, StreamRequestHandler
 import traceback
+import sys
 
 class MyStreamRequestHandlerr(StreamRequestHandler):
     """
@@ -25,7 +26,7 @@ class MyStreamRequestHandlerr(StreamRequestHandler):
 
 if __name__ == "__main__":
     host = "0.0.0.0"       #主机名，可以是ip,像localhost的主机名,或""
-    port = 9999     #端口
+    port = 9999 if len(sys.argv)<2 else int(sys.argv[1])     #端口
     addr = (host, port)
 
     server = TCPServer(addr, MyStreamRequestHandlerr)
