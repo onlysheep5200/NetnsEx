@@ -126,6 +126,7 @@ class DockerProxy(Proxy) :
                     'ip netns exec %d ifconfig eth0 promisc'%(pid),
                     'ip netns exec %d ip addr del 127.0.0.1/8 dev lo'%(pid),
                     'ip netns exec %d ip route add default dev eth0'%(pid),
+                    'ip netns exec %d ifconfig eth0 mtu 1450'%(pid),
                     'ip netns exec %d sysctl -w net.ipv4.conf.eth0.route_localnet=1'%(pid),
                     'ip link set %s up'%veth]
         return commands
