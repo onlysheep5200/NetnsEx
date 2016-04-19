@@ -39,10 +39,12 @@ from uuid import uuid4
             bridge : 主机对应网桥
             targetPorts : 面向其他主机的隧道端口
                 {
-                    hostId : bridge_to_the_host,
+                    hostId : port_to_the_host,
                     ...
                 }
             portNameList : 端口名列表
+            flag : 标识host的数字，用于创建gateway到主机的隧道时使用
+            toGatePort : 链接gate的端口
 
 
 
