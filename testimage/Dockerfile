@@ -5,8 +5,6 @@ RUN apt-get install -y telnet
 RUN apt-get install -y tcpdump
 RUN apt-get install -y apache2
 RUN ls /etc/apache2
-RUN mkdir -p /var/log/apache2
-RUN echo 'source /etc/apache2/envvars' | bash
+RUN mkdir -p /var/lock/apache2
 ADD server.py /
-RUN /etc/init.d/apache2 start
-CMD bash
+CMD echo 'source /etc/apache2/envvars | /etc/init.d/apache2 start' | bash && bash

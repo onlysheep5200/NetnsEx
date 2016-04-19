@@ -5,6 +5,7 @@ from hostend.proxy import *
 from lib.utils import Host
 from hostend.controller import *
 from lib.container import Container
+import os
 
 class NormalProxy(Proxy) :
 
@@ -29,21 +30,23 @@ class NormalProxy(Proxy) :
             if False :
                 tid = bindNetns.hostContainerMapping[self.host.uuid]
                 hostConfig['NetworkMode'] = 'container:%s'%tid
+            else :
+                hostConfig['NetworkMode'] = 'none'
             #hostConfig['privileged'] = True
             kwargs['host_config'] = hostConfig
             container = self.client.create_container(*args,**kwargs)
             self.client.start(container=container.get('Id'))
             containerInfo = self.client.inspect_container(container.get('Id'))
-            # pid = containerInfo['State']['Pid']
-            # self._link_netns_to_directory(pid)
-            # if hostConfig['NetworkMode'] == 'none' :
-            #     bridge = 'docker0'
-            #     if self.host.switchInterface :
-            #         bridge = self.host.getSwitchName()
-            #     #self._add_veth_to_netns(pid,bridge)
-            #     if not bindNetns :
-            #         bindNetns = self._create_netns(container,ip)
-            #     self._add_veth_to_netns(pid,privateIp,bridge,privateIp)
+            pid = containerInfo['State']['Pid']
+            self._link_netns_to_directory(pid)
+            if hostConfig['NetworkMode'] == 'none' :
+                 bridge = 'docker0'
+                 if self.host.switchInterface :
+                     bridge = self.host.getSwitchName()
+                 #self._add_veth_to_netns(pid,bridge)
+                 if not bindNetns :
+                     bindNetns = self._create_netns(container,ip)
+                 self._add_veth_to_netns(pid,privateIp,bridge,privateIp)
 
 
 #            container = self._create_container_instance(containerInfo,self.host.switchInterface,bindNetns,privateIp=privateIp)
@@ -83,9 +86,11 @@ class NormalProxy(Proxy) :
         #     bcmds = self._get_back_network_cmds(pid,privateIp,bridge,back_veth,back_peer)
         #     commonds.extend(bcmds)
 
-        for cmd in commonds :
-            print cmd
-            command_exec(cmd)
+	exeCmd = ' && '.join(commonds)
+        #command_exec(exeCmd)
+        os.system(exeCmd)
+        #for cmd in commonds :
+        #    command_exec(cmd)
 
     def _get_network_cmds(self,pid,ip,bridge,veth,peer):
         commands = [ 'ip link add %s type veth peer name %s'%(veth,peer),
@@ -170,6 +175,6 @@ if __name__ == '__main__' :
     proxy = NormalProxy(Client('unix://var/run/docker.sock'),Host.currentHost('1212',switchInterface='ovsbr1'),Controller())
     start = time.time()
     for i in xrange(num) :
-        container = proxy.create_container('10.232.0.3/24',None,image='hyd/testimage',stdin_open=True,tty=True,detach=True)
+        container = proxy.create_container('10.232.0.3/24',None,image='ubuntu',stdin_open=True,tty=True,detach=True)
     end = time.time()
     print 'time spend : %s'%(end-start)
