@@ -1,3 +1,4 @@
+#-*- coding:utf-8 -*-
 import sys
 sys.path.append('..')
 from hostend.proxy import *
@@ -28,8 +29,6 @@ class NormalProxy(Proxy) :
             if False :
                 tid = bindNetns.hostContainerMapping[self.host.uuid]
                 hostConfig['NetworkMode'] = 'container:%s'%tid
-            else :
-                hostConfig['NetworkMode'] = 'none'
             #hostConfig['privileged'] = True
             kwargs['host_config'] = hostConfig
             container = self.client.create_container(*args,**kwargs)

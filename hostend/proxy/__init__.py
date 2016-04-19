@@ -47,7 +47,7 @@ class DockerProxy(Proxy) :
         :return:
         '''
         container = {}
-        print bindNetns
+        #print bindNetns
         if not privateIp :
             privateIp = ip.split('/')[0]
         try :
@@ -113,7 +113,7 @@ class DockerProxy(Proxy) :
         #     commonds.extend(bcmds)
 
         for cmd in commonds :
-            print cmd
+            #print cmd
             command_exec(cmd)
 
     def _get_network_cmds(self,pid,ip,bridge,veth,peer):
@@ -198,7 +198,7 @@ class DockerProxy(Proxy) :
 if __name__ == '__main__' :
     proxy = DockerProxy(Client('unix://var/run/docker.sock'),Host.currentHost('1212',switchInterface='ovsbr1'))
     container = proxy.create_container('10.232.0.3',None,image='ubuntu',command='/bin/sh',stdin_open=True,tty=True,detach=True)
-    print container.__dict__
+    #print container.__dict__
 
 
 	
